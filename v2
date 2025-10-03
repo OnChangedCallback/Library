@@ -405,16 +405,18 @@ end
         for _, v in config do 
             local function_set = library.config_flags[_]
             
-            if _ == "config_name_list" then 
-                continue 
-            end
-
-            if function_set then 
+            if _ ~= "config_name_list" and function_set then 
                 if type(v) == "table" and v["Transparency"] and v["Color"] then
                     function_set(hex(v["Color"]), v["Transparency"])
                 elseif type(v) == "table" and v["active"] then 
                     function_set(v)
                 else
+                    if type(v) == "string" and v:sub(1, 1) == "#" then
+                        local color = v:sub(2)
+                        function_set(color)
+                    else
+                        function_set(v)
+                    end
                     function_set(v)
                 end
             end 
@@ -1073,7 +1075,6 @@ end
     end
 
     function library:seperator(properties)
-{{ ... }}
         local cfg = {items = {}, name = properties.Name or properties.name or "General"}
 
         local items = cfg.items do 
@@ -3580,7 +3581,6 @@ end
     
     function notifications:fade(path, is_fading)
         local fading = is_fading and 1 or 0 
-        
         library:tween(path, {BackgroundTransparency = fading}, Enum.EasingStyle.Quad, 1)
 
         for _, instance in path:GetDescendants() do 
@@ -3588,14 +3588,12 @@ end
                 if instance:IsA("UIStroke") then
                     library:tween(instance, {Transparency = fading}, Enum.EasingStyle.Quad, 1)
                 end
-    
-                continue
-            end 
-    
-            if instance:IsA("TextLabel") then
-                library:tween(instance, {TextTransparency = fading})
-            elseif instance:IsA("Frame") then
-                library:tween(instance, {BackgroundTransparency = instance.Transparency and 0.6 and is_fading and 1 or 0.6}, Enum.EasingStyle.Quad, 1)
+            else 
+                if instance:IsA("TextLabel") then
+                    library:tween(instance, {TextTransparency = fading})
+                elseif instance:IsA("Frame") then
+                    library:tween(instance, {BackgroundTransparency = instance.Transparency and 0.6 and is_fading and 1 or 0.6}, Enum.EasingStyle.Quad, 1)
+                end
             end
         end
     end 
