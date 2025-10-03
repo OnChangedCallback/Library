@@ -86,42 +86,80 @@ do
         )
     end
     
-    function utility:getClosestPlayer(fovRadius, targetPart, useFov, multiparts)
+    function utility:isPlayerKO(player)
+        if not player or not player.Character then return false end
+        
+        -- Проверяем K.O статус через BodyEffects
+        local success, isKO = pcall(function()
+            local playerInWorkspace = workspace.Players:FindFirstChild(player.Name)
+            if playerInWorkspace and playerInWorkspace:FindFirstChild("BodyEffects") then
+                local koEffect = playerInWorkspace.BodyEffects:FindFirstChild("K.O")
+                if koEffect and koEffect:FindFirstChild("Value") then
+                    return koEffect.Value.Value == true
+                end
+            end
+            return false
+        end)
+        
+        if success then
+            return isKO
+        end
+        
+        -- Fallback к проверке здоровья если BodyEffects недоступны
+        local humanoid = player.Character:FindFirstChild("Humanoid")
+        return humanoid and humanoid.Health <= 0
+    end
+    
+    function utility:isPlayerGrabbed(player)
+        if not player or not player.Character then return false end
+        -- Проверяем, схвачен ли игрок
+        local humanoid = player.Character:FindFirstChild("Humanoid")
+        if humanoid then
+            return humanoid.PlatformStand or false
+        end
+        return false
+    end
+    
+    function utility:hasForceField(player)
+        if not player or not player.Character then return false end
+        return player.Character:FindFirstChildOfClass("ForceField") ~= nil
+    end
+    
+    function utility:getClosestPlayer(fovRadius, targetPart, useFov, checks, predX, predY)
         local closestPlayer, closestDistance = nil, math.huge
         
-        -- Список всех R15 частей тела для multiparts режима
-        local bodyParts = {
-            "Head", "UpperTorso", "LowerTorso",
-            "LeftUpperArm", "LeftLowerArm", "LeftHand",
-            "RightUpperArm", "RightLowerArm", "RightHand",
-            "LeftUpperLeg", "LeftLowerLeg", "LeftFoot",
-            "RightUpperLeg", "RightLowerLeg", "RightFoot"
-        }
-        
         for _, player in ipairs(players:GetPlayers()) do
-            if player ~= lp and player.Character then
-                local partsToCheck = multiparts and bodyParts or {targetPart}
+            if player ~= lp and player.Character and player.Character:FindFirstChild(targetPart) then
+                -- Проверки цели (только при выборе новой цели)
+                local skipPlayer = false
+                if checks then
+                    if checks.checkKO and utility:isPlayerKO(player) then
+                        skipPlayer = true
+                    elseif checks.checkGrabbed and utility:isPlayerGrabbed(player) then
+                        skipPlayer = true
+                    elseif checks.checkForceField and utility:hasForceField(player) then
+                        skipPlayer = true
+                    end
+                end
                 
-                for _, partName in ipairs(partsToCheck) do
-                    if player.Character:FindFirstChild(partName) then
-                        local part = player.Character[partName]
-                        local predictedPosition = utility:predict(part, 0.021111111, 0.0102)
-                        if predictedPosition then
-                            local screenPos, onScreen = camera:WorldToViewportPoint(predictedPosition)
-                            if onScreen then
-                                local mousePos = uis:GetMouseLocation()
-                                local distance = (vec2(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                                
-                                if useFov then
-                                    if distance < fovRadius and distance < closestDistance then
-                                        closestPlayer = part
-                                        closestDistance = distance
-                                    end
-                                else
-                                    if distance < closestDistance then
-                                        closestPlayer = part
-                                        closestDistance = distance
-                                    end
+                if not skipPlayer then
+                    local part = player.Character[targetPart]
+                    local predictedPosition = utility:predict(part, predX or 0.021111111, predY or 0.0102)
+                    if predictedPosition then
+                        local screenPos, onScreen = camera:WorldToViewportPoint(predictedPosition)
+                        if onScreen then
+                            local mousePos = uis:GetMouseLocation()
+                            local distance = (vec2(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                            
+                            if useFov then
+                                if distance < fovRadius and distance < closestDistance then
+                                    closestPlayer = part
+                                    closestDistance = distance
+                                end
+                            else
+                                if distance < closestDistance then
+                                    closestPlayer = part
+                                    closestDistance = distance
                                 end
                             end
                         end
@@ -189,8 +227,18 @@ do
                 tracerEnabled = false,
                 tracerColor = rgb(0, 169, 255),
                 tracerTransparency = 0.5,
-                -- Aimpart settings
-                multiparts = false
+                -- Checks settings
+                checksEnabled = false,
+                checkKO = false,
+                checkGrabbed = false,
+                checkForceField = false,
+                -- Prediction settings
+                predictionEnabled = false,
+                customPredictionX = 0.021111111,
+                customPredictionY = 0.0102,
+                -- Resolver settings
+                resolverEnabled = false,
+                resolverMode = "Velocity"
             }
             
             -- ScreenGui FOV Circle
@@ -275,7 +323,14 @@ do
                         silentSettings.stickyTarget = nil
                     end
                 end
-                return _G.silentUtility:getClosestPlayer(silentSettings.fovRadius, silentSettings.targetPart, silentSettings.useFov, silentSettings.multiparts)
+                local checks = silentSettings.checksEnabled and {
+                    checkKO = silentSettings.checkKO,
+                    checkGrabbed = silentSettings.checkGrabbed,
+                    checkForceField = silentSettings.checkForceField
+                } or nil
+                local predX = silentSettings.predictionEnabled and silentSettings.customPredictionX or silentSettings.predictionX
+                local predY = silentSettings.predictionEnabled and silentSettings.customPredictionY or silentSettings.predictionY
+                return _G.silentUtility:getClosestPlayer(silentSettings.fovRadius, silentSettings.targetPart, silentSettings.useFov, checks, predX, predY)
             end
             
             -- Main Silent Aimbot Toggle
@@ -288,6 +343,32 @@ do
                     if not bool then
                         destroyVisuals()
                         fovFrame.Visible = false
+                    end
+                end,
+                seperator = true
+            })
+            
+            -- Sticky Target Keybind  
+            section:keybind({
+                name = "Sticky Target",
+                flag = "silent_sticky_key", 
+                key = enum.KeyCode.C,
+                mode = "Toggle",
+                default = false,
+                callback = function(active)
+                    if active then
+                        -- Включен - схватить ближайшую цель
+                        local checks = silentSettings.checksEnabled and {
+                            checkKO = silentSettings.checkKO,
+                            checkGrabbed = silentSettings.checkGrabbed,
+                            checkForceField = silentSettings.checkForceField
+                        } or nil
+                        local predX = silentSettings.predictionEnabled and silentSettings.customPredictionX or silentSettings.predictionX
+                        local predY = silentSettings.predictionEnabled and silentSettings.customPredictionY or silentSettings.predictionY
+                        silentSettings.stickyTarget = _G.silentUtility:getClosestPlayer(silentSettings.fovRadius, silentSettings.targetPart, silentSettings.useFov, checks, predX, predY)
+                    else
+                        -- Выключен - отпустить цель
+                        silentSettings.stickyTarget = nil
                     end
                 end,
                 seperator = true
@@ -437,29 +518,9 @@ do
                 end
             })
             
-            -- Aimpart Settings
-            local aimpartLabel = section:label({
-                name = "Aimpart",
-                seperator = true
-            })
-            
-            -- Aimpart Settings Sub-section
-            local aimpartSubSection = aimpartLabel:settings({})
-            
-            -- Multiparts Checkbox
-            aimpartSubSection:toggle({
-                name = "Multiparts",
-                flag = "silent_multiparts",
-                type = "checkbox",
-                callback = function(bool)
-                    silentSettings.multiparts = bool
-                end,
-                seperator = true
-            })
-            
             -- Aimpart Dropdown
-            aimpartSubSection:dropdown({
-                name = "Target Part",
+            section:dropdown({
+                name = "Aimpart",
                 flag = "silent_aimpart",
                 items = {
                     "Head",
@@ -481,6 +542,126 @@ do
                 default = "Head",
                 callback = function(selected)
                     silentSettings.targetPart = selected
+                end,
+                seperator = true
+            })
+            
+            
+            -- Checks Toggle
+            local checksToggle = section:toggle({
+                name = "Checks", 
+                flag = "silent_checks_enabled",
+                type = "checkbox",
+                callback = function(bool)
+                    silentSettings.checksEnabled = bool
+                end,
+                seperator = true
+            })
+            
+            -- Checks Settings Sub-section
+            local checksSubSection = checksToggle:settings({})
+            
+            -- KO Check
+            checksSubSection:toggle({
+                name = "Check K.O",
+                flag = "silent_check_ko",
+                type = "checkbox",
+                callback = function(bool)
+                    silentSettings.checkKO = bool
+                end,
+                seperator = true
+            })
+            
+            -- Grabbed Check
+            checksSubSection:toggle({
+                name = "Check Grabbed",
+                flag = "silent_check_grabbed",
+                type = "checkbox",
+                callback = function(bool)
+                    silentSettings.checkGrabbed = bool
+                end,
+                seperator = true
+            })
+            
+            -- ForceField Check
+            checksSubSection:toggle({
+                name = "Check ForceField",
+                flag = "silent_check_forcefield",
+                type = "checkbox",
+                callback = function(bool)
+                    silentSettings.checkForceField = bool
+                end,
+                seperator = true
+            })
+            
+            -- Prediction Toggle
+            local predictionToggle = section:toggle({
+                name = "Prediction", 
+                flag = "silent_prediction_enabled",
+                type = "checkbox",
+                callback = function(bool)
+                    silentSettings.predictionEnabled = bool
+                end,
+                seperator = true
+            })
+            
+            -- Prediction Settings Sub-section
+            local predictionSubSection = predictionToggle:settings({})
+            
+            -- Prediction X Textbox
+            predictionSubSection:textbox({
+                name = "Prediction X",
+                flag = "silent_prediction_x",
+                placeholder = "0.021111111",
+                callback = function(text)
+                    local value = tonumber(text)
+                    if value then
+                        silentSettings.customPredictionX = value
+                    end
+                end,
+                seperator = true
+            })
+            
+            -- Prediction Y Textbox
+            predictionSubSection:textbox({
+                name = "Prediction Y",
+                flag = "silent_prediction_y",
+                placeholder = "0.0102",
+                callback = function(text)
+                    local value = tonumber(text)
+                    if value then
+                        silentSettings.customPredictionY = value
+                    end
+                end,
+                seperator = true
+            })
+            
+            -- Resolver Toggle
+            local resolverToggle = section:toggle({
+                name = "Resolver", 
+                flag = "silent_resolver_enabled",
+                type = "checkbox",
+                callback = function(bool)
+                    silentSettings.resolverEnabled = bool
+                end,
+                seperator = true
+            })
+            
+            -- Resolver Settings Sub-section
+            local resolverSubSection = resolverToggle:settings({})
+            
+            -- Resolver Mode Dropdown
+            resolverSubSection:dropdown({
+                name = "Resolver Mode",
+                flag = "silent_resolver_mode",
+                items = {
+                    "Velocity",
+                    "MoveDirection", 
+                    "CalculateCFrame"
+                },
+                default = "Velocity",
+                callback = function(selected)
+                    silentSettings.resolverMode = selected
                 end,
                 seperator = true
             })
@@ -514,58 +695,26 @@ do
                 end
             end)
             
-            -- Hook Functions
-            local oldNamecall
-            oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-                local method = getnamecallmethod()
-                local args = {...}
-                
-                if not checkcaller() and silentSettings.enabled and self == ws and method == "Raycast" then
+            -- AIMBOT HOOK
+            local __aimbot
+            __aimbot = hookmetamethod(game, "__index", newcclosure(function(t, k)
+                if t:IsA("Mouse") and (k == "Hit" or k == "Target") then
+                    if not (silentSettings.enabled and getTarget()) then
+                        return __aimbot(t, k)
+                    end
+                    
                     local target = getTarget()
                     if target then
                         local predictedPosition = _G.silentUtility:predict(target, silentSettings.predictionX, silentSettings.predictionY)
                         if predictedPosition then
-                            args[3] = (predictedPosition - args[2]).Unit * 1000
-                            return oldNamecall(self, table.unpack(args))
+                            local hit = cfr(predictedPosition)
+                            return k == "Hit" and hit or target
                         end
                     end
                 end
-                
-                return oldNamecall(self, ...)
+                return __aimbot(t, k)
             end))
             
-            local oldIndex
-            oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
-                if not checkcaller() and self == mouse and silentSettings.enabled then
-                    local target = getTarget()
-                    if target then
-                        local predictedPosition = _G.silentUtility:predict(target, silentSettings.predictionX, silentSettings.predictionY)
-                        if not predictedPosition then return oldIndex(self, key) end
-                        
-                        if key == "Hit" then
-                            return cfr(predictedPosition)
-                        elseif key == "Target" then
-                            return target
-                        elseif key == "X" then
-                            return predictedPosition.X
-                        elseif key == "Y" then
-                            return predictedPosition.Y
-                        end
-                    end
-                end
-                return oldIndex(self, key)
-            end))
-            
-            -- Sticky Target Input
-            uis.InputBegan:Connect(function(input, gameProcessed)
-                if not gameProcessed and input.KeyCode == silentSettings.stickyKey then
-                    if silentSettings.stickyTarget then
-                        silentSettings.stickyTarget = nil
-                    else
-                        silentSettings.stickyTarget = _G.silentUtility:getClosestPlayer(silentSettings.fovRadius, silentSettings.targetPart, silentSettings.useFov, silentSettings.multiparts)
-                    end
-                end
-            end)
         end
     end
 end
