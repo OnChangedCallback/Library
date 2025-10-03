@@ -58,7 +58,7 @@ local remove = table.remove
 local concat = table.concat
 
 -- // Library
-local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/OnChangedCallback/Library/refs/heads/main/milenium"))()
+local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/OnChangedCallback/Library/refs/heads/main/v4"))()
 
 -- // Window
 local window = library:window({
@@ -69,18 +69,28 @@ local window = library:window({
 
 -- // Combat Tab
 do
-    local CombatTab = window:tab({
+    local CameraBotTab, SilentBotTab = window:tab({
         name = "Combat", 
-        icon = "rbxassetid://10734975692"  -- lucide-target
+        icon = "rbxassetid://10734975692",  -- lucide-target
+        tabs = {"CameraBot", "SilentBot"}
     })
     
-    -- Combat Section
+    -- CameraBot Section
     do
-        local CombatSection = CombatTab:column({})
-        local section = CombatSection:section({name = "Combat", default = false})
+        local CameraBotSection = CameraBotTab:column({})
+        local section = CameraBotSection:section({name = "CameraBot", default = false})
         
-        -- Placeholder for combat features
-        section:label({text = "Combat features will be added here"})
+        -- Placeholder for CameraBot features
+        section:label({text = "CameraBot features will be added here"})
+    end
+    
+    -- SilentBot Section  
+    do
+        local SilentBotSection = SilentBotTab:column({})
+        local section = SilentBotSection:section({name = "SilentBot", default = false})
+        
+        -- Placeholder for SilentBot features
+        section:label({text = "SilentBot features will be added here"})
     end
 end
 
