@@ -70,7 +70,7 @@ local udim2_new = UDim2.new
 local udim2_offset = UDim2.fromOffset
 
 -- // Library
-local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/OnChangedCallback/Library/refs/heads/main/v4"))()
+local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/OnChangedCallback/Library/refs/heads/main/v5"))()
 
 -- // Utility Functions
 do
@@ -86,33 +86,46 @@ do
         )
     end
     
-    function utility:getClosestPlayer(fovRadius, targetPart, useFov)
+    function utility:getClosestPlayer(fovRadius, targetPart, useFov, multiparts)
         local closestPlayer, closestDistance = nil, math.huge
+        
+        -- Список всех R15 частей тела для multiparts режима
+        local bodyParts = {
+            "Head", "UpperTorso", "LowerTorso",
+            "LeftUpperArm", "LeftLowerArm", "LeftHand",
+            "RightUpperArm", "RightLowerArm", "RightHand",
+            "LeftUpperLeg", "LeftLowerLeg", "LeftFoot",
+            "RightUpperLeg", "RightLowerLeg", "RightFoot"
+        }
+        
         for _, player in ipairs(players:GetPlayers()) do
-            if player ~= lp and player.Character and player.Character:FindFirstChild(targetPart) then
-                local part = player.Character[targetPart]
-                local predictedPosition = utility:predict(part, 0.021111111, 0.0102)
-                if not predictedPosition then 
-                    -- continue to next iteration
-                else
+            if player ~= lp and player.Character then
+                local partsToCheck = multiparts and bodyParts or {targetPart}
                 
-                local screenPos, onScreen = camera:WorldToViewportPoint(predictedPosition)
-                if onScreen then
-                    local mousePos = uis:GetMouseLocation()
-                    local distance = (vec2(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                    
-                    if useFov then
-                        if distance < fovRadius and distance < closestDistance then
-                            closestPlayer = part
-                            closestDistance = distance
-                        end
-                    else
-                        if distance < closestDistance then
-                            closestPlayer = part
-                            closestDistance = distance
+                for _, partName in ipairs(partsToCheck) do
+                    if player.Character:FindFirstChild(partName) then
+                        local part = player.Character[partName]
+                        local predictedPosition = utility:predict(part, 0.021111111, 0.0102)
+                        if predictedPosition then
+                            local screenPos, onScreen = camera:WorldToViewportPoint(predictedPosition)
+                            if onScreen then
+                                local mousePos = uis:GetMouseLocation()
+                                local distance = (vec2(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                                
+                                if useFov then
+                                    if distance < fovRadius and distance < closestDistance then
+                                        closestPlayer = part
+                                        closestDistance = distance
+                                    end
+                                else
+                                    if distance < closestDistance then
+                                        closestPlayer = part
+                                        closestDistance = distance
+                                    end
+                                end
+                            end
                         end
                     end
-                end
                 end
             end
         end
@@ -159,8 +172,6 @@ do
                 stickyTarget = nil,
                 fovRadius = 350,
                 targetPart = "Head",
-                airTargetPart = "Head",
-                multiParts = false,
                 useFov = true,
                 showFov = true,
                 fovColor = rgb(0, 169, 255),
@@ -177,7 +188,9 @@ do
                 highlightOutlineTransparency = 0.5,
                 tracerEnabled = false,
                 tracerColor = rgb(0, 169, 255),
-                tracerTransparency = 0.5
+                tracerTransparency = 0.5,
+                -- Aimpart settings
+                multiparts = false
             }
             
             -- ScreenGui FOV Circle
@@ -254,57 +267,15 @@ do
                 tracerLine.Visible = false
             end
             
-            local function isPlayerInAir(player)
-                if not player or not player.Character then return false end
-                local humanoid = player.Character:FindFirstChild("Humanoid")
-                if not humanoid then return false end
-                
-                -- Проверяем состояние Humanoid
-                return humanoid:GetState() == enum.HumanoidStateType.Freefall or 
-                       humanoid:GetState() == enum.HumanoidStateType.Flying or
-                       humanoid:GetState() == enum.HumanoidStateType.Jumping
-            end
-            
-            local function getTargetPart(player)
-                if silentSettings.multiParts then
-                    -- Multiparts: выбираем ближайшую к курсору часть тела
-                    return _G.silentUtility:getClosestPartToCursor(player)
-                else
-                    -- Обычный режим: выбираем по состоянию игрока
-                    if isPlayerInAir(player) then
-                        return silentSettings.airTargetPart
-                    else
-                        return silentSettings.targetPart
-                    end
-                end
-            end
-            
             local function getTarget()
                 if silentSettings.stickyTarget then
                     if silentSettings.stickyTarget.Parent then
-                        local targetPartName = getTargetPart(silentSettings.stickyTarget.Parent.Parent)
-                        if silentSettings.stickyTarget.Parent:FindFirstChild(targetPartName) then
-                            return silentSettings.stickyTarget.Parent:FindFirstChild(targetPartName)
-                        else
-                            silentSettings.stickyTarget = nil
-                        end
+                        return silentSettings.stickyTarget
                     else
                         silentSettings.stickyTarget = nil
                     end
                 end
-                
-                if silentSettings.multiParts then
-                    return _G.silentUtility:getClosestPlayerToCursor(silentSettings.fovRadius, nil, silentSettings.useFov)
-                else
-                    -- Получаем ближайшего игрока и определяем нужную часть тела
-                    local closestPlayer = _G.silentUtility:getClosestPlayer(silentSettings.fovRadius, "Head", silentSettings.useFov)
-                    if closestPlayer and closestPlayer.Parent then
-                        local targetPartName = getTargetPart(closestPlayer.Parent.Parent)
-                        return closestPlayer.Parent:FindFirstChild(targetPartName)
-                    end
-                end
-                
-                return nil
+                return _G.silentUtility:getClosestPlayer(silentSettings.fovRadius, silentSettings.targetPart, silentSettings.useFov, silentSettings.multiparts)
             end
             
             -- Main Silent Aimbot Toggle
@@ -468,16 +439,28 @@ do
             
             -- Aimpart Settings
             local aimpartLabel = section:label({
-                text = "Aimpart",
+                name = "Aimpart",
                 seperator = true
             })
             
-            local aimpartSettings = aimpartLabel:settings({})
+            -- Aimpart Settings Sub-section
+            local aimpartSubSection = aimpartLabel:settings({})
             
-            -- Ground Aimpart Dropdown
-            aimpartSettings:dropdown({
-                name = "Ground Aimpart",
-                flag = "silent_ground_aimpart",
+            -- Multiparts Checkbox
+            aimpartSubSection:toggle({
+                name = "Multiparts",
+                flag = "silent_multiparts",
+                type = "checkbox",
+                callback = function(bool)
+                    silentSettings.multiparts = bool
+                end,
+                seperator = true
+            })
+            
+            -- Aimpart Dropdown
+            aimpartSubSection:dropdown({
+                name = "Target Part",
+                flag = "silent_aimpart",
                 items = {
                     "Head",
                     "UpperTorso", 
@@ -498,45 +481,6 @@ do
                 default = "Head",
                 callback = function(selected)
                     silentSettings.targetPart = selected
-                end,
-                seperator = true
-            })
-            
-            -- Air Aimpart Dropdown
-            aimpartSettings:dropdown({
-                name = "Air Aimpart",
-                flag = "silent_air_aimpart",
-                items = {
-                    "Head",
-                    "UpperTorso", 
-                    "LowerTorso",
-                    "LeftUpperArm",
-                    "LeftLowerArm",
-                    "LeftHand",
-                    "RightUpperArm",
-                    "RightLowerArm", 
-                    "RightHand",
-                    "LeftUpperLeg",
-                    "LeftLowerLeg",
-                    "LeftFoot",
-                    "RightUpperLeg",
-                    "RightLowerLeg",
-                    "RightFoot"
-                },
-                default = "Head",
-                callback = function(selected)
-                    silentSettings.airTargetPart = selected
-                end,
-                seperator = true
-            })
-            
-            -- Multiparts Checkbox
-            aimpartSettings:toggle({
-                name = "Multiparts",
-                flag = "silent_multiparts",
-                type = "checkbox",
-                callback = function(bool)
-                    silentSettings.multiParts = bool
                 end,
                 seperator = true
             })
@@ -618,7 +562,7 @@ do
                     if silentSettings.stickyTarget then
                         silentSettings.stickyTarget = nil
                     else
-                        silentSettings.stickyTarget = _G.silentUtility:getClosestPlayer(silentSettings.fovRadius, silentSettings.targetPart, silentSettings.useFov)
+                        silentSettings.stickyTarget = _G.silentUtility:getClosestPlayer(silentSettings.fovRadius, silentSettings.targetPart, silentSettings.useFov, silentSettings.multiparts)
                     end
                 end
             end)
