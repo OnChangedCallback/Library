@@ -125,6 +125,19 @@ do
         return player.Character:FindFirstChildOfClass("ForceField") ~= nil
     end
     
+    function utility:hasWallBetween(fromPosition, toPosition, targetPlayer)
+        if not fromPosition or not toPosition or not targetPlayer then return false end
+        
+        local raycastParams = RaycastParams.new()
+        raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+        raycastParams.FilterDescendantsInstances = {targetPlayer.Character, lp.Character}
+        
+        local direction = (toPosition - fromPosition)
+        
+        local raycastResult = workspace:Raycast(fromPosition, direction, raycastParams)
+        return raycastResult ~= nil
+    end
+    
     function utility:getClosestPlayer(fovRadius, targetPart, useFov, checks, predX, predY)
         local closestPlayer, closestDistance = nil, math.huge
         
@@ -138,6 +151,8 @@ do
                     elseif checks.checkGrabbed and utility:isPlayerGrabbed(player) then
                         skipPlayer = true
                     elseif checks.checkForceField and utility:hasForceField(player) then
+                        skipPlayer = true
+                    elseif checks.checkWall and utility:hasWallBetween(camera.CFrame.Position, player.Character[targetPart].Position, player) then
                         skipPlayer = true
                     end
                 end
@@ -193,8 +208,303 @@ do
         local CameraBotSection = CameraBotTab:column({})
         local section = CameraBotSection:section({name = "CameraBot", default = false})
         
-        -- Placeholder for CameraBot features
-        section:label({text = "CameraBot features will be added here"})
+        -- Camera Aimbot Implementation
+        do
+            -- Camera Aimbot Variables
+            local cameraSettings = {
+                enabled = false,
+                stickyTarget = nil,
+                stickyEnabled = false,
+                targetPart = "Head",
+                aimlockType = "Mouse Movement",
+                -- Prediction settings
+                predictionEnabled = false,
+                customPredictionX = 0.021111111,
+                customPredictionY = 0.0102,
+                -- Resolver settings
+                resolverEnabled = false,
+                resolverMode = "Velocity",
+                -- Checks settings
+                checksEnabled = false,
+                checkKO = false,
+                checkGrabbed = false,
+                checkForceField = false,
+                checkWall = false
+            }
+            
+            -- Helper Functions
+            local function MouseMover(X, Y)
+                mousemoverel(X, Y)    
+            end
+            
+            local function getCameraTarget()
+                if cameraSettings.stickyEnabled then
+                    if cameraSettings.stickyTarget and cameraSettings.stickyTarget.Parent then
+                        return cameraSettings.stickyTarget
+                    else
+                        -- Захватываем новую цель если sticky включен
+                        local checks = cameraSettings.checksEnabled and {
+                            checkKO = cameraSettings.checkKO,
+                            checkGrabbed = cameraSettings.checkGrabbed,
+                            checkForceField = cameraSettings.checkForceField,
+                            checkWall = cameraSettings.checkWall
+                        } or nil
+                        local predX = cameraSettings.predictionEnabled and cameraSettings.customPredictionX or 0
+                        local predY = cameraSettings.predictionEnabled and cameraSettings.customPredictionY or 0
+                        cameraSettings.stickyTarget = _G.silentUtility:getClosestPlayer(math.huge, cameraSettings.targetPart, false, checks, predX, predY)
+                        return cameraSettings.stickyTarget
+                    end
+                else
+                    cameraSettings.stickyTarget = nil
+                    return nil
+                end
+            end
+            
+            -- Main Camera Aimbot Toggle
+            local mainToggle = section:toggle({
+                name = "Camera Aimbot", 
+                flag = "camera_enabled",
+                type = "toggle",
+                callback = function(bool)
+                    cameraSettings.enabled = bool
+                    if not bool then
+                        cameraSettings.stickyTarget = nil
+                    end
+                end,
+                seperator = true
+            })
+            
+            -- Sticky Target Keybind  
+            section:keybind({
+                name = "Sticky Target",
+                flag = "camera_sticky_key", 
+                key = enum.KeyCode.T,
+                mode = "Toggle",
+                default = false,
+                callback = function(active)
+                    cameraSettings.stickyEnabled = active
+                end,
+                seperator = true
+            })
+            
+            -- Aimlock Type Dropdown
+            section:dropdown({
+                name = "Aimlock Type",
+                flag = "camera_aimlock_type",
+                items = {
+                    "Mouse Movement",
+                    "MoveCenterOfScreen"
+                },
+                default = "Mouse Movement",
+                callback = function(selected)
+                    cameraSettings.aimlockType = selected
+                end,
+                seperator = true
+            })
+            
+            -- Prediction Toggle
+            local predictionToggle = section:toggle({
+                name = "Prediction", 
+                flag = "camera_prediction_enabled",
+                type = "checkbox",
+                callback = function(bool)
+                    cameraSettings.predictionEnabled = bool
+                end,
+                seperator = true
+            })
+            
+            -- Prediction Settings Sub-section
+            local predictionSubSection = predictionToggle:settings({})
+            
+            -- Prediction X Textbox
+            predictionSubSection:textbox({
+                name = "Prediction X",
+                flag = "camera_prediction_x",
+                placeholder = "0.021111111",
+                callback = function(text)
+                    local value = tonumber(text)
+                    if value then
+                        cameraSettings.customPredictionX = value
+                    end
+                end,
+                seperator = true
+            })
+            
+            -- Prediction Y Textbox
+            predictionSubSection:textbox({
+                name = "Prediction Y",
+                flag = "camera_prediction_y",
+                placeholder = "0.0102",
+                callback = function(text)
+                    local value = tonumber(text)
+                    if value then
+                        cameraSettings.customPredictionY = value
+                    end
+                end,
+                seperator = true
+            })
+            
+            -- Resolver Toggle
+            local resolverToggle = section:toggle({
+                name = "Resolver", 
+                flag = "camera_resolver_enabled",
+                type = "checkbox",
+                callback = function(bool)
+                    cameraSettings.resolverEnabled = bool
+                end,
+                seperator = true
+            })
+            
+            -- Resolver Settings Sub-section
+            local resolverSubSection = resolverToggle:settings({})
+            
+            -- Resolver Mode Dropdown
+            resolverSubSection:dropdown({
+                name = "Resolver Mode",
+                flag = "camera_resolver_mode",
+                items = {
+                    "Velocity",
+                    "MoveDirection", 
+                    "CalculateCFrame"
+                },
+                default = "Velocity",
+                callback = function(selected)
+                    cameraSettings.resolverMode = selected
+                end,
+                seperator = true
+            })
+            
+            -- Hitparts Dropdown
+            section:dropdown({
+                name = "Hitparts",
+                flag = "camera_hitparts",
+                items = {
+                    "Head",
+                    "UpperTorso", 
+                    "LowerTorso",
+                    "LeftUpperArm",
+                    "LeftLowerArm",
+                    "LeftHand",
+                    "RightUpperArm",
+                    "RightLowerArm", 
+                    "RightHand",
+                    "LeftUpperLeg",
+                    "LeftLowerLeg",
+                    "LeftFoot",
+                    "RightUpperLeg",
+                    "RightLowerLeg",
+                    "RightFoot"
+                },
+                default = "Head",
+                callback = function(selected)
+                    cameraSettings.targetPart = selected
+                end,
+                seperator = true
+            })
+            
+            -- Checks Toggle
+            local checksToggle = section:toggle({
+                name = "Checks", 
+                flag = "camera_checks_enabled",
+                type = "checkbox",
+                callback = function(bool)
+                    cameraSettings.checksEnabled = bool
+                end,
+                seperator = true
+            })
+            
+            -- Checks Settings Sub-section
+            local checksSubSection = checksToggle:settings({})
+            
+            -- KO Check
+            checksSubSection:toggle({
+                name = "Check K.O",
+                flag = "camera_check_ko",
+                type = "checkbox",
+                callback = function(bool)
+                    cameraSettings.checkKO = bool
+                end,
+                seperator = true
+            })
+            
+            -- Grabbed Check
+            checksSubSection:toggle({
+                name = "Check Grabbed",
+                flag = "camera_check_grabbed",
+                type = "checkbox",
+                callback = function(bool)
+                    cameraSettings.checkGrabbed = bool
+                end,
+                seperator = true
+            })
+            
+            -- ForceField Check
+            checksSubSection:toggle({
+                name = "Check ForceField",
+                flag = "camera_check_forcefield",
+                type = "checkbox",
+                callback = function(bool)
+                    cameraSettings.checkForceField = bool
+                end,
+                seperator = true
+            })
+            
+            -- Wall Check
+            checksSubSection:toggle({
+                name = "Check Wall",
+                flag = "camera_check_wall",
+                type = "checkbox",
+                callback = function(bool)
+                    cameraSettings.checkWall = bool
+                end,
+                seperator = true
+            })
+            
+            -- Camera Aimbot Loop
+            run.RenderStepped:Connect(function()
+                if not cameraSettings.enabled then
+                    return
+                end
+                
+                local target = getCameraTarget()
+                if target then
+                    -- Используем prediction если включен
+                    local targetPosition = target.Position
+                    if cameraSettings.predictionEnabled then
+                        local predX = cameraSettings.customPredictionX
+                        local predY = cameraSettings.customPredictionY
+                        targetPosition = _G.silentUtility:predict(target, predX, predY) or target.Position
+                    end
+                    
+                    local screenPos, onScreen = camera:WorldToViewportPoint(targetPosition)
+                    
+                    if onScreen then
+                        if cameraSettings.aimlockType == "Mouse Movement" then
+                            local mousePos = uis:GetMouseLocation()
+                            local deltaX = screenPos.X - mousePos.X
+                            local deltaY = screenPos.Y - mousePos.Y
+                            
+                            -- Перемещаем курсор к цели
+                            MouseMover(deltaX, deltaY)
+                            
+                        elseif cameraSettings.aimlockType == "MoveCenterOfScreen" then
+                            local screenSize = camera.ViewportSize
+                            local centerX = screenSize.X / 2
+                            local centerY = screenSize.Y / 2
+                            
+                            local deltaX = screenPos.X - centerX
+                            local deltaY = screenPos.Y - centerY
+                            
+                            -- Двигаем камеру чтобы цель была в центре экрана
+                            local currentCFrame = camera.CFrame
+                            local lookDirection = (targetPosition - currentCFrame.Position).Unit
+                            camera.CFrame = cfr(currentCFrame.Position, currentCFrame.Position + lookDirection)
+                        end
+                    end
+                end
+            end)
+            
+        end
     end
     
     -- SilentBot Section  
@@ -232,13 +542,16 @@ do
                 checkKO = false,
                 checkGrabbed = false,
                 checkForceField = false,
+                checkWall = false,
                 -- Prediction settings
                 predictionEnabled = false,
                 customPredictionX = 0.021111111,
                 customPredictionY = 0.0102,
                 -- Resolver settings
                 resolverEnabled = false,
-                resolverMode = "Velocity"
+                resolverMode = "Velocity",
+                -- Sticky settings
+                stickyEnabled = false
             }
             
             -- ScreenGui FOV Circle
@@ -316,21 +629,35 @@ do
             end
             
             local function getTarget()
-                if silentSettings.stickyTarget then
-                    if silentSettings.stickyTarget.Parent then
+                if silentSettings.stickyEnabled then
+                    if silentSettings.stickyTarget and silentSettings.stickyTarget.Parent then
                         return silentSettings.stickyTarget
                     else
-                        silentSettings.stickyTarget = nil
+                        -- Захватываем новую цель если sticky включен
+                        local checks = silentSettings.checksEnabled and {
+                            checkKO = silentSettings.checkKO,
+                            checkGrabbed = silentSettings.checkGrabbed,
+                            checkForceField = silentSettings.checkForceField,
+                            checkWall = silentSettings.checkWall
+                        } or nil
+                        local predX = silentSettings.predictionEnabled and silentSettings.customPredictionX or silentSettings.predictionX
+                        local predY = silentSettings.predictionEnabled and silentSettings.customPredictionY or silentSettings.predictionY
+                        silentSettings.stickyTarget = _G.silentUtility:getClosestPlayer(silentSettings.fovRadius, silentSettings.targetPart, silentSettings.useFov, checks, predX, predY)
+                        return silentSettings.stickyTarget
                     end
+                else
+                    silentSettings.stickyTarget = nil
+                    -- Свободный захват цели
+                    local checks = silentSettings.checksEnabled and {
+                        checkKO = silentSettings.checkKO,
+                        checkGrabbed = silentSettings.checkGrabbed,
+                        checkForceField = silentSettings.checkForceField,
+                        checkWall = silentSettings.checkWall
+                    } or nil
+                    local predX = silentSettings.predictionEnabled and silentSettings.customPredictionX or silentSettings.predictionX
+                    local predY = silentSettings.predictionEnabled and silentSettings.customPredictionY or silentSettings.predictionY
+                    return _G.silentUtility:getClosestPlayer(silentSettings.fovRadius, silentSettings.targetPart, silentSettings.useFov, checks, predX, predY)
                 end
-                local checks = silentSettings.checksEnabled and {
-                    checkKO = silentSettings.checkKO,
-                    checkGrabbed = silentSettings.checkGrabbed,
-                    checkForceField = silentSettings.checkForceField
-                } or nil
-                local predX = silentSettings.predictionEnabled and silentSettings.customPredictionX or silentSettings.predictionX
-                local predY = silentSettings.predictionEnabled and silentSettings.customPredictionY or silentSettings.predictionY
-                return _G.silentUtility:getClosestPlayer(silentSettings.fovRadius, silentSettings.targetPart, silentSettings.useFov, checks, predX, predY)
             end
             
             -- Main Silent Aimbot Toggle
@@ -356,20 +683,7 @@ do
                 mode = "Toggle",
                 default = false,
                 callback = function(active)
-                    if active then
-                        -- Включен - схватить ближайшую цель
-                        local checks = silentSettings.checksEnabled and {
-                            checkKO = silentSettings.checkKO,
-                            checkGrabbed = silentSettings.checkGrabbed,
-                            checkForceField = silentSettings.checkForceField
-                        } or nil
-                        local predX = silentSettings.predictionEnabled and silentSettings.customPredictionX or silentSettings.predictionX
-                        local predY = silentSettings.predictionEnabled and silentSettings.customPredictionY or silentSettings.predictionY
-                        silentSettings.stickyTarget = _G.silentUtility:getClosestPlayer(silentSettings.fovRadius, silentSettings.targetPart, silentSettings.useFov, checks, predX, predY)
-                    else
-                        -- Выключен - отпустить цель
-                        silentSettings.stickyTarget = nil
-                    end
+                    silentSettings.stickyEnabled = active
                 end,
                 seperator = true
             })
@@ -590,6 +904,17 @@ do
                 type = "checkbox",
                 callback = function(bool)
                     silentSettings.checkForceField = bool
+                end,
+                seperator = true
+            })
+            
+            -- Wall Check
+            checksSubSection:toggle({
+                name = "Check Wall",
+                flag = "silent_check_wall",
+                type = "checkbox",
+                callback = function(bool)
+                    silentSettings.checkWall = bool
                 end,
                 seperator = true
             })
