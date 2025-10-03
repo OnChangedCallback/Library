@@ -1,0 +1,467 @@
+-- // Variables
+local uis = game:GetService("UserInputService")
+local players = game:GetService("Players")
+local ws = game:GetService("Workspace")
+local rs = game:GetService("ReplicatedStorage")
+local http_service = game:GetService("HttpService")
+local gui_service = game:GetService("GuiService")
+local lighting = game:GetService("Lighting")
+local run = game:GetService("RunService")
+local stats = game:GetService("Stats")
+local coregui = game:GetService("CoreGui")
+local debris = game:GetService("Debris")
+local tween_service = game:GetService("TweenService")
+local sound_service = game:GetService("SoundService")
+
+local vec2 = Vector2.new
+local vec3 = Vector3.new
+local dim2 = UDim2.new
+local dim = UDim.new 
+local rect = Rect.new
+local cfr = CFrame.new
+local empty_cfr = cfr()
+local point_object_space = empty_cfr.PointToObjectSpace
+local angle = CFrame.Angles
+local dim_offset = UDim2.fromOffset
+
+local color = Color3.new
+local rgb = Color3.fromRGB
+local hex = Color3.fromHex
+local hsv = Color3.fromHSV
+local rgbseq = ColorSequence.new
+local rgbkey = ColorSequenceKeypoint.new
+local numseq = NumberSequence.new
+local numkey = NumberSequenceKeypoint.new
+
+local camera = ws.CurrentCamera
+local lp = players.LocalPlayer 
+local mouse = lp:GetMouse() 
+local gui_offset = gui_service:GetGuiInset().Y
+
+local max = math.max 
+local floor = math.floor 
+local min = math.min 
+local abs = math.abs 
+local noise = math.noise
+local rad = math.rad 
+local random = math.random 
+local pow = math.pow 
+local sin = math.sin 
+local pi = math.pi 
+local tan = math.tan 
+local atan2 = math.atan2 
+local clamp = math.clamp 
+
+local insert = table.insert 
+local find = table.find 
+local remove = table.remove
+local concat = table.concat
+
+-- // Library
+local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/OnChangedCallback/Library/refs/heads/main/milenium"))()
+
+-- // Window
+local window = library:window({
+    name = "R4ZE", 
+    suffix = ".PUB", 
+    gameInfo = "Raze.pub v3"
+})
+
+-- // Combat Tab
+do
+    local CombatTab = window:tab({
+        name = "Combat", 
+        icon = "rbxassetid://10734975692"  -- lucide-target
+    })
+    
+    -- Combat Section
+    do
+        local CombatSection = CombatTab:column({})
+        local section = CombatSection:section({name = "Combat", default = false})
+        
+        -- Placeholder for combat features
+        section:label({text = "Combat features will be added here"})
+    end
+end
+
+-- // Visuals Tab  
+do
+    local VisualsTab = window:tab({
+        name = "Visuals", 
+        icon = "rbxassetid://10723346959"  -- lucide-eye
+    })
+    
+    -- Visuals Section
+    do
+        local VisualsSection = VisualsTab:column({})
+        local section = VisualsSection:section({name = "Visuals", default = false})
+        
+        -- Placeholder for visual features
+        section:label({text = "Visual features will be added here"})
+    end
+end
+
+-- // Misc Tab
+do
+    local MiscTab = window:tab({
+        name = "Misc", 
+        icon = "rbxassetid://10734934585"  -- lucide-rocket
+    })
+    
+    -- Misc Section
+    do
+        local MiscSection = MiscTab:column({})
+        local section = MiscSection:section({name = "Misc", default = false})
+        
+        -- Placeholder for misc features
+        section:label({text = "Miscellaneous features will be added here"})
+    end
+end
+
+-- // Settings Tab
+do
+    
+    local SettingsTab, ConfigsTab = window:tab({
+        name = "Settings", 
+        icon = "rbxassetid://10734950309",  -- lucide-settings
+        tabs = {"Main", "Configs"}
+    })
+    
+    -- Settings Section
+    do
+        local SettingsSection = SettingsTab:column({})
+        local section = SettingsSection:section({name = "Settings", default = false})
+        
+        -- Set default accent color
+        library:update_theme("accent", rgb(0, 169, 255))
+        
+        -- Menu Keybind
+        section:keybind({
+            name = "Menu Keybind", 
+            key = Enum.KeyCode.RightControl,
+            mode = "Toggle",
+            default = false,
+            callback = function(bool) 
+                window.toggle_menu(bool) 
+            end,
+            info = "Клавиша для открытия/закрытия меню"
+        })
+        
+        -- Game Interaction Buttons
+        section:button({
+            name = "Copy JobId",
+            callback = function()
+                setclipboard(game.JobId)
+                library.notifications:create_notification({
+                    name = "JobId Copied",
+                    info = "JobId copied to clipboard!",
+                    lifetime = 3
+                })
+            end,
+            info = "Copy current server JobId to clipboard"
+        })
+        
+        section:button({
+            name = "Copy GameID",
+            callback = function()
+                setclipboard(game.GameId)
+                library.notifications:create_notification({
+                    name = "GameID Copied",
+                    info = "GameID copied to clipboard!",
+                    lifetime = 3
+                })
+            end,
+            info = "Copy current game ID to clipboard"
+        })
+        
+        section:button({
+            name = "Copy Join Script",
+            callback = function()
+                setclipboard(
+                    'game:GetService("TeleportService"):TeleportToPlaceInstance(' ..
+                        game.PlaceId .. ', "' .. game.JobId .. '", game.Players.LocalPlayer)'
+                )
+                library.notifications:create_notification({
+                    name = "Join Script Copied",
+                    info = "Join script copied to clipboard!",
+                    lifetime = 3
+                })
+            end,
+            info = "Copy teleport script to join this server"
+        })
+        
+        section:button({
+            name = "Rejoin",
+            callback = function()
+                game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId, lp)
+            end,
+            info = "Rejoin current server"
+        })
+        
+        section:button({
+            name = "Join New Server",
+            callback = function()
+                local serverData = 
+                    http_service:JSONDecode(
+                    game:HttpGetAsync(
+                        "https://games.roblox.com/v1/games/" ..
+                            game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+                    )
+                )
+                local validServers = {}
+                for _, server in pairs(serverData.data) do
+                    if server.playing >= library.flags["min_players"] and server.playing <= library.flags["max_players"] then
+                        insert(validServers, server)
+                    end
+                end
+                
+                if #validServers > 0 then
+                    local randomServer = validServers[random(1, #validServers)]
+                    game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, randomServer.id)
+                else
+                    library.notifications:create_notification({
+                        name = "No Servers Found",
+                        info = "No servers found matching player count criteria!",
+                        lifetime = 3
+                    })
+                end
+            end,
+            info = "Join a random server within player count range"
+        })
+        
+        section:slider({
+            name = "Min Players", 
+            flag = "min_players", 
+            min = 0, 
+            max = 40, 
+            default = 1, 
+            interval = 1,
+            info = "Minimum number of players required on server"
+        })
+        
+        section:slider({
+            name = "Max Players", 
+            flag = "max_players", 
+            min = 0, 
+            max = 40, 
+            default = 15, 
+            interval = 1,
+            info = "Maximum number of players allowed on server"
+        })
+        
+        -- Notification Test Button
+        section:button({
+            name = "Notification Test", 
+            callback = function()
+                library.notifications:create_notification({
+                    name = "Test Notification",
+                    info = "This is a test notification with random colors!",
+                    lifetime = 5
+                })
+            end
+        })
+    end
+    
+    -- Configs Section
+    do
+        local ConfigsSection = ConfigsTab:column({})
+        local section = ConfigsSection:section({name = "Configs", default = true})
+        
+        local ConfigName = ""
+        local ConfigSelected = ""
+        
+        -- Config List
+        local configList = section:dropdown({
+            name = "Configs",
+            items = {"Default Config"},
+            callback = function(selected)
+                ConfigSelected = selected
+                print("Config Selected:", selected)
+            end,
+            flag = "config_list"
+        })
+        
+        -- Config Name Input
+        section:textbox({
+            name = "Config Name", 
+            placeholder = "Enter config name...",
+            callback = function(text)
+                ConfigName = text
+            end,
+            flag = "config_name_input"
+        })
+        
+        -- Create Config Button
+        section:button({
+            name = "Create Config", 
+            callback = function()
+                if ConfigName ~= "" then
+                    local configPath = library.directory .. "/configs/" .. ConfigName .. ".cfg"
+                    if not isfile(configPath) then
+                        writefile(configPath, library:get_config())
+                        
+                        -- Обновляем dropdown
+                        local configFiles = {}
+                        for idx, file in listfiles(library.directory .. "/configs") do
+                            local name = file:gsub(library.directory .. "/configs\\", ""):gsub(".cfg", ""):gsub(library.directory .. "\\configs\\", "")
+                            insert(configFiles, name)
+                        end
+                        configList.refresh_options(configFiles)
+                        
+                        library.notifications:create_notification({
+                            name = "Config Created",
+                            info = "Config '" .. ConfigName .. "' created successfully!",
+                            lifetime = 3
+                        })
+                    else
+                        library.notifications:create_notification({
+                            name = "Error",
+                            info = "Config '" .. ConfigName .. "' already exists!",
+                            lifetime = 3
+                        })
+                    end
+                else
+                    library.notifications:create_notification({
+                        name = "Error",
+                        info = "Please enter a config name!",
+                        lifetime = 3
+                    })
+                end
+            end
+        })
+        
+        -- Load Config Button
+        section:button({
+            name = "Load Config", 
+            callback = function()
+                if ConfigSelected ~= "" then
+                    local configPath = library.directory .. "/configs/" .. ConfigSelected .. ".cfg"
+                    if isfile(configPath) then
+                        library:load_config(readfile(configPath))
+                        library.notifications:create_notification({
+                            name = "Config Loaded",
+                            info = "Config '" .. ConfigSelected .. "' loaded successfully!",
+                            lifetime = 3
+                        })
+                    else
+                        library.notifications:create_notification({
+                            name = "Error",
+                            info = "Config file not found!",
+                            lifetime = 3
+                        })
+                    end
+                else
+                    library.notifications:create_notification({
+                        name = "Error",
+                        info = "Please select a config to load!",
+                        lifetime = 3
+                    })
+                end
+            end
+        })
+        
+        -- Save Config Button
+        section:button({
+            name = "Save Config", 
+            callback = function()
+                if ConfigSelected ~= "" then
+                    local configPath = library.directory .. "/configs/" .. ConfigSelected .. ".cfg"
+                    writefile(configPath, library:get_config())
+                    library.notifications:create_notification({
+                        name = "Config Saved",
+                        info = "Config '" .. ConfigSelected .. "' saved successfully!",
+                        lifetime = 3
+                    })
+                else
+                    library.notifications:create_notification({
+                        name = "Error",
+                        info = "Please select a config to save!",
+                        lifetime = 3
+                    })
+                end
+            end
+        })
+        
+        -- Delete Config Button
+        section:button({
+            name = "Delete Config", 
+            callback = function()
+                if ConfigSelected ~= "" then
+                    local configPath = library.directory .. "/configs/" .. ConfigSelected .. ".cfg"
+                    if isfile(configPath) then
+                        delfile(configPath)
+                        
+                        -- Обновляем dropdown
+                        local configFiles = {}
+                        for idx, file in listfiles(library.directory .. "/configs") do
+                            local name = file:gsub(library.directory .. "/configs\\", ""):gsub(".cfg", ""):gsub(library.directory .. "\\configs\\", "")
+                            insert(configFiles, name)
+                        end
+                        
+                        if #configFiles > 0 then
+                            configList.refresh_options(configFiles)
+                        else
+                            configList.refresh_options({"No configs found"})
+                        end
+                        
+                        library.notifications:create_notification({
+                            name = "Config Deleted",
+                            info = "Config '" .. ConfigSelected .. "' deleted successfully!",
+                            lifetime = 3
+                        })
+                        ConfigSelected = ""
+                    else
+                        library.notifications:create_notification({
+                            name = "Error",
+                            info = "Config file not found!",
+                            lifetime = 3
+                        })
+                    end
+                else
+                    library.notifications:create_notification({
+                        name = "Error",
+                        info = "Please select a config to delete!",
+                        lifetime = 3
+                    })
+                end
+            end
+        })
+        
+        -- Auto refresh function
+        local function refreshConfigList(showNotification)
+            local configFiles = {}
+            for idx, file in listfiles(library.directory .. "/configs") do
+                local name = file:gsub(library.directory .. "/configs\\", ""):gsub(".cfg", ""):gsub(library.directory .. "\\configs\\", "")
+                insert(configFiles, name)
+            end
+            
+            if #configFiles > 0 then
+                configList.refresh_options(configFiles)
+            else
+                configList.refresh_options({"No configs found"})
+            end
+            
+            if showNotification then
+                library.notifications:create_notification({
+                    name = "Configs Refreshed",
+                    info = "Config list updated!",
+                    lifetime = 2
+                })
+            end
+        end
+        
+        -- Auto refresh on startup
+        refreshConfigList(false)
+        
+        -- Refresh Configs Button
+        section:button({
+            name = "Refresh Configs", 
+            callback = function()
+                refreshConfigList(true)
+            end
+        })
+    end
+end
+
+
+library:update_theme("accent", rgb(0, 169, 255))
