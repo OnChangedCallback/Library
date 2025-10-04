@@ -384,20 +384,17 @@ do
                 if not s then warn("[AutoBuy] Armor error:", e) end
             end
             
-            if (autoBuySettings.autoGuns.enabled or autoBuySettings.autoAmmo.enabled) and lp.Character and lp.Character:FindFirstChild("BodyEffects") then
-                local Armor = lp.Character.BodyEffects.Armor
-                if Armor.Value >= 130 then
-                    if autoBuySettings.autoGuns.enabled then
-                        local s2, e2 = pcall(AutoWeaponsAndAmmo)
-                        if not s2 then warn("[AutoBuy] weapons/ammo error:", e2) end
-                    elseif autoBuySettings.autoAmmo.enabled then
-                        -- Auto ammo only for existing weapons
-                        for _, weaponData in ipairs(WEAPONS) do
-                            if autoBuyUtility:hasWeapon(weaponData.Name) then
-                                local s3, e3 = pcall(AutoAmmo, weaponData.Name)
-                                if not s3 then warn("[AutoBuy] Ammo buy error:", weaponData.Name, e3) end
-                            end
-                        end
+            if autoBuySettings.autoGuns.enabled and lp.Character then
+                local s2, e2 = pcall(AutoWeaponsAndAmmo)
+                if not s2 then warn("[AutoBuy] weapons/ammo error:", e2) end
+            end
+            
+            if autoBuySettings.autoAmmo.enabled and lp.Character then
+                -- Auto ammo only for existing weapons
+                for _, weaponData in ipairs(WEAPONS) do
+                    if autoBuyUtility:hasWeapon(weaponData.Name) then
+                        local s3, e3 = pcall(AutoAmmo, weaponData.Name)
+                        if not s3 then warn("[AutoBuy] Ammo buy error:", weaponData.Name, e3) end
                     end
                 end
             end
@@ -411,6 +408,74 @@ do
     
     -- Start main loop
     coroutine.resume(coroutine.create(MainAutoBuy))
+end
+
+-- // AntiStomp Module
+do
+    local antiStompSettings = {
+        enabled = false,
+        hpThreshold = 10
+    }
+    
+    local function MainAntiStomp()
+        while true do
+            wait(0.1)
+            
+            if antiStompSettings.enabled and lp.Character then
+                local humanoid = lp.Character:FindFirstChild("Humanoid")
+                if humanoid and humanoid.Health <= antiStompSettings.hpThreshold then
+                    -- Вызываем смерть локального игрока
+                    humanoid.Health = 0
+                end
+            end
+        end
+    end
+    
+    _G.antiStompSettings = antiStompSettings
+    
+    -- Start main loop
+    coroutine.resume(coroutine.create(MainAntiStomp))
+end
+
+-- // VelocityBreaker Module
+do
+    local velocityBreakerSettings = {
+        enabled = false,
+        velocityX = 0,
+        velocityY = 0,
+        velocityZ = 0
+    }
+    
+    local velocityConnection = nil
+    
+    local function MainVelocityBreaker()
+        if velocityConnection then
+            velocityConnection:Disconnect()
+        end
+        
+        velocityConnection = run.Heartbeat:Connect(function()
+            if velocityBreakerSettings.enabled then
+                local character = lp.Character
+                if character and character:FindFirstChild("HumanoidRootPart") then
+                    local hrp = character.HumanoidRootPart
+                    local originalVel = hrp.Velocity
+                    hrp.Velocity = vec3(
+                        velocityBreakerSettings.velocityX,
+                        velocityBreakerSettings.velocityY,
+                        velocityBreakerSettings.velocityZ
+                    )
+                    run.RenderStepped:Wait()
+                    hrp.Velocity = originalVel
+                end
+            end
+        end)
+    end
+    
+    _G.velocityBreakerSettings = velocityBreakerSettings
+    _G.MainVelocityBreaker = MainVelocityBreaker
+    
+    -- Start main loop
+    MainVelocityBreaker()
 end
 
 -- // Window
@@ -1299,8 +1364,84 @@ do
         local MiscSection = MiscTab:column({})
         local section = MiscSection:section({name = "General", default = false})
         
-        -- Placeholder for misc features
-        section:label({text = "Miscellaneous features will be added here"})
+        -- AntiStomp Toggle
+        local antiStompToggle = section:toggle({
+            name = "AntiStomp",
+            flag = "anti_stomp_enabled",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.antiStompSettings.enabled = bool
+            end,
+            info = "Автоматически вызывает смерть при низком HP"
+        })
+        
+        -- AntiStomp Settings
+        local antiStompSettings = antiStompToggle:settings({})
+        
+        antiStompSettings:slider({
+            name = "HP Threshold",
+            flag = "anti_stomp_hp",
+            min = 1,
+            max = 99,
+            default = 10,
+            suffix = " HP",
+            callback = function(value)
+                _G.antiStompSettings.hpThreshold = value
+            end,
+            info = "HP при котором будет вызвана смерть"
+        })
+        
+        -- VelocityBreaker Toggle
+        local velocityBreakerToggle = section:toggle({
+            name = "VelocityBreaker",
+            flag = "velocity_breaker_enabled",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.velocityBreakerSettings.enabled = bool
+            end,
+            info = "Изменяет скорость игрока для анти-эйма"
+        })
+        
+        -- VelocityBreaker Settings
+        local velocityBreakerSettings = velocityBreakerToggle:settings({})
+        
+        velocityBreakerSettings:slider({
+            name = "Velocity X",
+            flag = "velocity_breaker_x",
+            min = 0,
+            max = 100,
+            default = 0,
+            callback = function(value)
+                _G.velocityBreakerSettings.velocityX = value
+            end,
+            info = "Скорость по оси X"
+        })
+        
+        velocityBreakerSettings:slider({
+            name = "Velocity Y",
+            flag = "velocity_breaker_y",
+            min = 0,
+            max = 100,
+            default = 0,
+            callback = function(value)
+                _G.velocityBreakerSettings.velocityY = value
+            end,
+            info = "Скорость по оси Y"
+        })
+        
+        velocityBreakerSettings:slider({
+            name = "Velocity Z",
+            flag = "velocity_breaker_z",
+            min = 0,
+            max = 100,
+            default = 0,
+            callback = function(value)
+                _G.velocityBreakerSettings.velocityZ = value
+            end,
+            info = "Скорость по оси Z"
+        })
     end
     
     -- Loadout Section
