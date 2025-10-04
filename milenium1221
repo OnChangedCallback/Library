@@ -57,6 +57,9 @@ local find = table.find
 local remove = table.remove
 local concat = table.concat
 
+-- // AutoBuy Variables
+local task_wait = task.wait
+
 -- // Silent Aimbot Variables
 local drawing_new = Drawing.new
 local hookmetamethod = hookmetamethod
@@ -186,6 +189,228 @@ do
     end
     
     _G.silentUtility = utility
+end
+
+-- // AutoBuy Module
+do
+    local autoBuySettings = {
+        autoArmor = {
+            enabled = false,
+            armorValue = 120,
+            key = enum.KeyCode.F1,
+            keyMode = "Toggle"
+        },
+        autoGuns = {
+            enabled = false,
+            selectedWeapons = {"[Rifle]", "[LMG]"},
+            key = enum.KeyCode.F2,
+            keyMode = "Toggle"
+        },
+        autoAmmo = {
+            enabled = false,
+            key = enum.KeyCode.F3,
+            keyMode = "Toggle"
+        }
+    }
+    
+    -- Shop objects
+    local Shop = ws.Ignored.Shop
+    local ARMOR_SHOP = Shop["[High-Medium Armor] - $2513"]
+    local ARMOR_PRICE = 2513
+    
+    -- Weapons data
+    local WEAPONS = {
+        {Name = "[Rifle]", ShopName = "[Rifle] - $0", Enabled = true},
+        {Name = "[LMG]", ShopName = "[LMG] - $0", Enabled = true},
+        {Name = "[P90]", ShopName = "[P90] - $0", Enabled = false},
+        {Name = "[Flintlock]", ShopName = "[Flintlock] - $0", Enabled = false},
+        {Name = "[Revolver]", ShopName = "[Revolver] - $0", Enabled = false},
+        {Name = "[Double-Barrel SG]", ShopName = "[Double-Barrel SG] - $0", Enabled = false},
+        {Name = "[AK47]", ShopName = "[AK47] - $0", Enabled = false},
+        {Name = "[TacticalShotgun]", ShopName = "[TacticalShotgun] - $0", Enabled = false},
+        {Name = "[SMG]", ShopName = "[SMG] - $0", Enabled = false},
+        {Name = "[AR]", ShopName = "[AR] - $0", Enabled = false},
+        {Name = "[Silencer]", ShopName = "[Silencer] - $0", Enabled = false},
+        {Name = "[Shotgun]", ShopName = "[Shotgun] - $0", Enabled = false}
+    }
+    
+    -- Ammo mapping
+    local AMMO_MAP = {
+        ["[Rifle]"] = "5 [Rifle Ammo] - $0",
+        ["[LMG]"] = "200 [LMG Ammo] - $0",
+        ["[P90]"] = "120 [P90 Ammo] - $0",
+        ["[Flintlock]"] = "6 [Flintlock Ammo] - $0",
+        ["[Revolver]"] = "12 [Revolver Ammo] - $0",
+        ["[Double-Barrel SG]"] = "18 [Double-Barrel SG Ammo] - $0",
+        ["[AK47]"] = "90 [AK47 Ammo] - $0",
+        ["[TacticalShotgun]"] = "20 [TacticalShotgun Ammo] - $0",
+        ["[SMG]"] = "80 [SMG Ammo] - $0",
+        ["[AR]"] = "100 [AR Ammo] - $0",
+        ["[Silencer]"] = "25 [Silencer Ammo] - $0",
+        ["[Shotgun]"] = "20 [Shotgun Ammo] - $0"
+    }
+    
+    -- Utility functions
+    local autoBuyUtility = {}
+    
+    function autoBuyUtility:hasWeapon(weaponName)
+        if lp.Backpack:FindFirstChild(weaponName) then
+            return true
+        end
+        
+        local character = lp.Character
+        if character and character:FindFirstChild(weaponName) then
+            return true
+        end
+        
+        return false
+    end
+    
+    function autoBuyUtility:getWeaponShop(weaponData)
+        return Shop:FindFirstChild(weaponData.ShopName)
+    end
+    
+    function autoBuyUtility:hasItem(itemName)
+        local function check(container)
+            for _, item in pairs(container:GetChildren()) do
+                if item.Name == itemName then
+                    return true
+                end
+            end
+            return false
+        end
+        return check(lp.Backpack) or check(lp.Character)
+    end
+    
+    function autoBuyUtility:getAmmoShop(ammoName)
+        return Shop:FindFirstChild(ammoName)
+    end
+    
+    -- Auto buy functions
+    local function AutoArmor()
+        if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") and lp.Character:FindFirstChild("BodyEffects") then
+            local Origin = lp.Character.HumanoidRootPart.CFrame
+            local Armor = lp.Character.BodyEffects.Armor
+            
+            if Armor.Value <= autoBuySettings.autoArmor.armorValue then
+                repeat
+                    task_wait()    
+                    lp.Character.HumanoidRootPart.CFrame = ARMOR_SHOP.Head.CFrame
+                    fireclickdetector(ARMOR_SHOP.ClickDetector)
+                until Armor.Value >= 130 or lp.DataFolder.Currency.Value < ARMOR_PRICE
+                lp.Character.HumanoidRootPart.CFrame = Origin
+            end
+        end
+    end
+    
+    local function AutoAmmo(weaponName)
+        if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+            local ammoName = AMMO_MAP[weaponName]
+            if not ammoName then return end
+            
+            local inventoryItem = lp.DataFolder.Inventory:FindFirstChild(weaponName)
+            local currentAmmo = inventoryItem and tonumber(inventoryItem.Value) or 0
+            
+            if currentAmmo > 0 then
+                return
+            end
+            
+            for _, tool in pairs(lp.Character:GetChildren()) do
+                if tool:IsA("Tool") then
+                    tool.Parent = lp.Backpack
+                end
+            end
+            
+            local Origin = lp.Character.HumanoidRootPart.CFrame
+            local ammoShop = autoBuyUtility:getAmmoShop(ammoName)
+            
+            if ammoShop and ammoShop:FindFirstChild("Head") and ammoShop:FindFirstChild("ClickDetector") then
+                for i = 1, 2 do
+                    local startAmmo = lp.DataFolder.Inventory:FindFirstChild(weaponName)
+                    local startValue = startAmmo and tonumber(startAmmo.Value) or 0
+                    
+                    repeat
+                        task_wait()
+                        lp.Character.HumanoidRootPart.CFrame = ammoShop.Head.CFrame
+                        fireclickdetector(ammoShop.ClickDetector)
+                        
+                        local newAmmo = lp.DataFolder.Inventory:FindFirstChild(weaponName)
+                        local newValue = newAmmo and tonumber(newAmmo.Value) or 0
+                    until newValue > startValue
+                end
+                
+                lp.Character.HumanoidRootPart.CFrame = Origin
+            end
+        end
+    end
+    
+    local function AutoWeaponsAndAmmo()
+        if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+            for _, weaponData in ipairs(WEAPONS) do
+                if weaponData.Enabled then
+                
+                if not autoBuyUtility:hasWeapon(weaponData.Name) then
+                    local s, e = pcall(function()
+                        local Origin = lp.Character.HumanoidRootPart.CFrame
+                        local weaponShop = autoBuyUtility:getWeaponShop(weaponData)
+                        
+                        if weaponShop and weaponShop:FindFirstChild("Head") and weaponShop:FindFirstChild("ClickDetector") then
+                            repeat
+                                task_wait()
+                                lp.Character.HumanoidRootPart.CFrame = weaponShop.Head.CFrame
+                                fireclickdetector(weaponShop.ClickDetector)
+                            until autoBuyUtility:hasWeapon(weaponData.Name)
+                            
+                            lp.Character.HumanoidRootPart.CFrame = Origin
+                        end
+                    end)
+                    if not s then warn("[AutoBuy] Weapon buy error:", weaponData.Name, e) end
+                end
+                
+                if autoBuyUtility:hasWeapon(weaponData.Name) then
+                    local s, e = pcall(AutoAmmo, weaponData.Name)
+                    if not s then warn("[AutoBuy] Ammo buy error:", weaponData.Name, e) end
+                end
+                end
+            end
+        end
+    end
+    
+    -- Main loop
+    local function MainAutoBuy()
+        while task_wait() do
+            if autoBuySettings.autoArmor.enabled then
+                local s, e = pcall(AutoArmor)
+                if not s then warn("[AutoBuy] Armor error:", e) end
+            end
+            
+            if (autoBuySettings.autoGuns.enabled or autoBuySettings.autoAmmo.enabled) and lp.Character and lp.Character:FindFirstChild("BodyEffects") then
+                local Armor = lp.Character.BodyEffects.Armor
+                if Armor.Value >= 130 then
+                    if autoBuySettings.autoGuns.enabled then
+                        local s2, e2 = pcall(AutoWeaponsAndAmmo)
+                        if not s2 then warn("[AutoBuy] weapons/ammo error:", e2) end
+                    elseif autoBuySettings.autoAmmo.enabled then
+                        -- Auto ammo only for existing weapons
+                        for _, weaponData in ipairs(WEAPONS) do
+                            if autoBuyUtility:hasWeapon(weaponData.Name) then
+                                local s3, e3 = pcall(AutoAmmo, weaponData.Name)
+                                if not s3 then warn("[AutoBuy] Ammo buy error:", weaponData.Name, e3) end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    _G.autoBuySettings = autoBuySettings
+    _G.autoBuyUtility = autoBuyUtility
+    _G.MainAutoBuy = MainAutoBuy
+    _G.WEAPONS = WEAPONS
+    
+    -- Start main loop
+    coroutine.resume(coroutine.create(MainAutoBuy))
 end
 
 -- // Window
@@ -1063,18 +1288,136 @@ end
 
 -- // Misc Tab
 do
-    local MiscTab = window:tab({
+    local MiscTab, LoadoutTab = window:tab({
         name = "Misc", 
-        icon = "rbxassetid://10734934585"  -- lucide-rocket
+        icon = "rbxassetid://10734934585",  -- lucide-rocket
+        tabs = {"General", "Loadout"}
     })
     
-    -- Misc Section
+    -- General Misc Section
     do
         local MiscSection = MiscTab:column({})
-        local section = MiscSection:section({name = "Misc", default = false})
+        local section = MiscSection:section({name = "General", default = false})
         
         -- Placeholder for misc features
         section:label({text = "Miscellaneous features will be added here"})
+    end
+    
+    -- Loadout Section
+    do
+        local LoadoutSection = LoadoutTab:column({})
+        local section = LoadoutSection:section({name = "Auto Buy", default = true})
+        
+        -- AutoArmor Toggle
+        local autoArmorToggle = section:toggle({
+            name = "Auto Armor",
+            flag = "auto_armor_enabled",
+            type = "toggle",
+            callback = function(bool)
+                _G.autoBuySettings.autoArmor.enabled = bool
+            end
+        })
+        
+        -- AutoArmor Settings
+        local armorSettings = autoArmorToggle:settings({})
+        
+        armorSettings:keybind({
+            name = "Auto Armor Key",
+            flag = "auto_armor_key",
+            key = enum.KeyCode.F1,
+            mode = "Toggle",
+            callback = function(active)
+                library.config_flags["auto_armor_enabled"](active)
+                _G.autoBuySettings.autoArmor.enabled = active
+            end
+        })
+        
+        armorSettings:slider({
+            name = "Armor Value",
+            flag = "auto_armor_value",
+            min = 1,
+            max = 129,
+            default = 120,
+            suffix = " HP",
+            callback = function(value)
+                _G.autoBuySettings.autoArmor.armorValue = value
+            end,
+            info = "Значение брони при котором будет покупаться новая броня"
+        })
+        
+        -- AutoGuns Toggle
+        local autoGunsToggle = section:toggle({
+            name = "Auto Guns",
+            flag = "auto_guns_enabled",
+            type = "toggle",
+            callback = function(bool)
+                _G.autoBuySettings.autoGuns.enabled = bool
+            end
+        })
+        
+        -- AutoGuns Settings
+        local gunsSettings = autoGunsToggle:settings({})
+        
+        gunsSettings:keybind({
+            name = "Auto Guns Key",
+            flag = "auto_guns_key",
+            key = enum.KeyCode.F2,
+            mode = "Toggle",
+            callback = function(active)
+                library.config_flags["auto_guns_enabled"](active)
+                _G.autoBuySettings.autoGuns.enabled = active
+            end
+        })
+        
+        gunsSettings:dropdown({
+            name = "Weapon Selection",
+            flag = "auto_guns_weapon",
+            items = {
+                "[Rifle]", "[LMG]", "[P90]", "[Flintlock]", "[Revolver]", 
+                "[Double-Barrel SG]", "[AK47]", "[TacticalShotgun]", 
+                "[SMG]", "[AR]", "[Silencer]", "[Shotgun]"
+            },
+            default = {"[Rifle]", "[LMG]"},
+            multi = true,
+            callback = function(selectedWeapons)
+                _G.autoBuySettings.autoGuns.selectedWeapons = selectedWeapons
+                -- Update WEAPONS table to enable only selected weapons
+                for _, weaponData in ipairs(_G.WEAPONS or {}) do
+                    weaponData.Enabled = false
+                    for _, selectedWeapon in ipairs(selectedWeapons) do
+                        if weaponData.Name == selectedWeapon then
+                            weaponData.Enabled = true
+                            break
+                        end
+                    end
+                end
+            end,
+            info = "Выберите оружие для автопокупки (можно несколько)"
+        })
+        
+        -- AutoAmmo Toggle
+        local autoAmmoToggle = section:toggle({
+            name = "Auto Ammo",
+            flag = "auto_ammo_enabled",
+            type = "toggle",
+            callback = function(bool)
+                _G.autoBuySettings.autoAmmo.enabled = bool
+            end
+        })
+        
+        -- AutoAmmo Settings
+        local ammoSettings = autoAmmoToggle:settings({})
+        
+        ammoSettings:keybind({
+            name = "Auto Ammo Key",
+            flag = "auto_ammo_key",
+            key = enum.KeyCode.F3,
+            mode = "Toggle",
+            callback = function(active)
+                library.config_flags["auto_ammo_enabled"](active)
+                _G.autoBuySettings.autoAmmo.enabled = active
+            end
+        })
     end
 end
 
