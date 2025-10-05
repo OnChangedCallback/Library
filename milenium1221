@@ -1577,8 +1577,19 @@ do
         local character = player.Character
         local existingHighlight = character:FindFirstChild("ESPHighlight")
         
+        -- Если highlight уже существует и настройки не изменились, не пересоздаем
         if existingHighlight then
-            existingHighlight:Destroy()
+            local currentFillColor = library.flags["highlight_fill_color"] and library.flags["highlight_fill_color"].Color or rgb(255, 0, 0)
+            local currentOutlineColor = library.flags["highlight_outline_color"] and library.flags["highlight_outline_color"].Color or rgb(255, 255, 255)
+            local currentFillTransparency = library.flags["highlight_fill_transparency"] or 0.5
+            local currentOutlineTransparency = library.flags["highlight_outline_transparency"] or 0
+            
+            -- Обновляем настройки существующего highlight
+            existingHighlight.FillColor = currentFillColor
+            existingHighlight.OutlineColor = currentOutlineColor
+            existingHighlight.FillTransparency = currentFillTransparency
+            existingHighlight.OutlineTransparency = currentOutlineTransparency
+            return existingHighlight
         end
         
         local highlight = instance_new("Highlight")
@@ -1628,13 +1639,206 @@ do
         end
     end
     
-    -- // Player Events для Highlight Chams
+    -- // Material Chams Functions (оптимизированные)
+    local originalColors = {} -- Хранилище оригинальных цветов
+    local originalClothing = {} -- Хранилище оригинальной одежды
+    
+    function espFramework:setPlayerMaterial(player, materialName)
+        if not player or not player.Character then return end
+        
+        local character = player.Character
+        local materialColor = library.flags["material_chams_color"] and library.flags["material_chams_color"].Color or rgb(255, 255, 255)
+        
+        -- Обрабатываем только основные части тела (оптимизация FPS)
+        local bodyParts = {"Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg", 
+                          "UpperTorso", "LowerTorso", "LeftUpperArm", "RightUpperArm", 
+                          "LeftLowerArm", "RightLowerArm", "LeftUpperLeg", "RightUpperLeg", 
+                          "LeftLowerLeg", "RightLowerLeg", "LeftHand", "RightHand", "LeftFoot", "RightFoot"}
+        
+        for _, partName in ipairs(bodyParts) do
+            local part = character:FindFirstChild(partName)
+            if part and part:IsA("BasePart") then
+                local partKey = player.Name .. "_" .. partName
+                
+                if materialName == "Neon" then
+                    -- Сохраняем оригинальный цвет перед изменением
+                    if not originalColors[partKey] then
+                        originalColors[partKey] = part.Color
+                    end
+                    
+                    part.Material = Enum.Material.Neon
+                    part.Color = materialColor
+                    -- Убираем текстуры для MeshPart
+                    if part:IsA("MeshPart") then
+                        part.TextureID = ""
+                    end
+                else
+                    -- Восстанавливаем оригинальный цвет
+                    part.Material = Enum.Material.Plastic
+                    if originalColors[partKey] then
+                        part.Color = originalColors[partKey]
+                    end
+                end
+            end
+        end
+        
+        -- Обрабатываем лицо отдельно
+        local head = character:FindFirstChild("Head")
+        if head then
+            local face = head:FindFirstChild("face")
+            if face and face:IsA("Decal") and face.Name == "face" then
+                if materialName == "Neon" then
+                    face.Transparency = 1
+                else
+                    face.Transparency = 0
+                end
+            end
+            
+            -- Убираем текстуры с головы
+            for _, mesh in ipairs(head:GetChildren()) do
+                if mesh:IsA("SpecialMesh") then
+                    if materialName == "Neon" then
+                        mesh.TextureId = ""
+                    end
+                end
+            end
+        end
+        
+        -- Управляем одеждой
+        local playerKey = player.Name
+        if materialName == "Neon" then
+            -- Сохраняем одежду перед удалением
+            if not originalClothing[playerKey] then
+                originalClothing[playerKey] = {}
+            end
+            
+            for _, className in ipairs({"Pants", "Shirt", "ShirtGraphic"}) do
+                local clothing = character:FindFirstChildOfClass(className)
+                if clothing then
+                    -- Сохраняем данные одежды
+                    originalClothing[playerKey][className] = {
+                        Name = clothing.Name,
+                        Properties = {}
+                    }
+                    
+                    -- Сохраняем все свойства одежды
+                    if className == "Pants" then
+                        originalClothing[playerKey][className].Properties.PantsTemplate = clothing.PantsTemplate
+                    elseif className == "Shirt" then
+                        originalClothing[playerKey][className].Properties.ShirtTemplate = clothing.ShirtTemplate
+                    elseif className == "ShirtGraphic" then
+                        originalClothing[playerKey][className].Properties.Graphic = clothing.Graphic
+                    end
+                    
+                    clothing:Destroy()
+                end
+            end
+        else
+            -- Восстанавливаем одежду
+            if originalClothing[playerKey] then
+                for className, clothingData in pairs(originalClothing[playerKey]) do
+                    -- Проверяем что одежды еще нет
+                    if not character:FindFirstChildOfClass(className) then
+                        local newClothing = instance_new(className)
+                        newClothing.Name = clothingData.Name
+                        
+                        -- Восстанавливаем свойства
+                        for property, value in pairs(clothingData.Properties) do
+                            newClothing[property] = value
+                        end
+                        
+                        newClothing.Parent = character
+                    end
+                end
+            end
+        end
+    end
+    
+    function espFramework:setAllPlayersMaterial(materialName)
+        for _, player in ipairs(players:GetPlayers()) do
+            if player ~= lp then
+                espFramework:setPlayerMaterial(player, materialName)
+            end
+        end
+    end
+    
+    function espFramework:restoreAllPlayersMaterial()
+        -- Однократное восстановление материалов без дальнейших проверок
+        for _, player in ipairs(players:GetPlayers()) do
+            if player ~= lp and player.Character then
+                local character = player.Character
+                
+                -- Восстанавливаем только основные части тела на Plastic
+                local bodyParts = {"Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg", 
+                                  "UpperTorso", "LowerTorso", "LeftUpperArm", "RightUpperArm", 
+                                  "LeftLowerArm", "RightLowerArm", "LeftUpperLeg", "RightUpperLeg", 
+                                  "LeftLowerLeg", "RightLowerLeg", "LeftHand", "RightHand", "LeftFoot", "RightFoot"}
+                
+                for _, partName in ipairs(bodyParts) do
+                    local part = character:FindFirstChild(partName)
+                    if part and part:IsA("BasePart") then
+                        part.Material = Enum.Material.Plastic
+                        -- Не трогаем цвет - оставляем как есть
+                    end
+                end
+                
+                -- Восстанавливаем лицо
+                local head = character:FindFirstChild("Head")
+                if head then
+                    local face = head:FindFirstChild("face")
+                    if face and face:IsA("Decal") then
+                        face.Transparency = 0
+                    end
+                end
+            end
+        end
+    end
+    
+    function espFramework:updateAllMaterialColors(flags)
+        if not flags["material_chams_enabled"] then return end
+        
+        local materialColor = flags["material_chams_color"] and flags["material_chams_color"].Color or rgb(255, 255, 255)
+        
+        -- Обрабатываем только основные части тела (оптимизация FPS)
+        local bodyParts = {"Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg", 
+                          "UpperTorso", "LowerTorso", "LeftUpperArm", "RightUpperArm", 
+                          "LeftLowerArm", "RightLowerArm", "LeftUpperLeg", "RightUpperLeg", 
+                          "LeftLowerLeg", "RightLowerLeg", "LeftHand", "RightHand", "LeftFoot", "RightFoot"}
+        
+        for _, player in ipairs(players:GetPlayers()) do
+            if player ~= lp and player.Character then
+                local character = player.Character
+                for _, partName in ipairs(bodyParts) do
+                    local part = character:FindFirstChild(partName)
+                    if part and part:IsA("BasePart") and part.Material == Enum.Material.Neon then
+                        part.Color = materialColor
+                    end
+                end
+            end
+        end
+    end
+    
+    function espFramework:clearAllMaterialColors()
+        -- Очищаем все сохраненные цвета (для отладки)
+        originalColors = {}
+    end
+    
+    function espFramework:clearAllMaterialData()
+        -- Очищаем все сохраненные данные материалов и одежды
+        originalColors = {}
+        originalClothing = {}
+    end
+    
+    -- // Player Events для Highlight и Material Chams
     players.PlayerAdded:Connect(function(player)
         if player ~= lp then
             player.CharacterAdded:Connect(function(character)
                 task_wait(1) -- Ждем полной загрузки персонажа
                 if library.flags["highlight_chams_enabled"] then
                     espFramework:createHighlight(player)
+                end
+                if library.flags["material_chams_enabled"] then
+                    espFramework:setPlayerMaterial(player, "Neon")
                 end
             end)
         end
@@ -1643,18 +1847,46 @@ do
     players.PlayerRemoving:Connect(function(player)
         if player ~= lp then
             espFramework:removeHighlight(player)
+            -- Очищаем сохраненные цвета и одежду игрока
+            for key, _ in pairs(originalColors) do
+                if key:find(player.Name .. "_") == 1 then
+                    originalColors[key] = nil
+                end
+            end
+            
+            -- Очищаем сохраненную одежду
+            if originalClothing[player.Name] then
+                originalClothing[player.Name] = nil
+            end
         end
     end)
     
     -- Обработка уже существующих игроков
     for _, player in ipairs(players:GetPlayers()) do
         if player ~= lp then
+            -- Подключаем событие CharacterAdded для будущих респавнов
             player.CharacterAdded:Connect(function(character)
                 task_wait(1) -- Ждем полной загрузки персонажа
                 if library.flags["highlight_chams_enabled"] then
                     espFramework:createHighlight(player)
                 end
+                if library.flags["material_chams_enabled"] then
+                    espFramework:setPlayerMaterial(player, "Neon")
+                end
             end)
+            
+            -- Обрабатываем уже существующих персонажей
+            if player.Character then
+                task_spawn(function()
+                    task_wait(1) -- Ждем полной загрузки персонажа
+                    if library.flags["highlight_chams_enabled"] then
+                        espFramework:createHighlight(player)
+                    end
+                    if library.flags["material_chams_enabled"] then
+                        espFramework:setPlayerMaterial(player, "Neon")
+                    end
+                end)
+            end
         end
     end
     
@@ -3063,6 +3295,46 @@ do
                 _G.espFramework:updateAllHighlights(library.flags)
             end,
             info = "Цвет и прозрачность обводки highlight"
+        })
+        
+        -- Material Chams Toggle
+        local materialChamsToggle = section:toggle({
+            name = "Material Chams",
+            flag = "material_chams_enabled",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                -- Устанавливаем boolean значение в flags
+                library.flags["material_chams_enabled"] = bool
+                
+                if bool then
+                    -- Применяем neon материал ко всем игрокам
+                    _G.espFramework:setAllPlayersMaterial("Neon")
+                else
+                    -- Однократно возвращаем plastic материал и останавливаем обновления
+                    _G.espFramework:setAllPlayersMaterial("Plastic")
+                end
+            end,
+            info = "Меняет материал игроков на светящийся"
+        })
+        
+        -- Material Chams Settings
+        local materialSettings = materialChamsToggle:settings({})
+        
+        -- Material Color
+        materialSettings:colorpicker({
+            name = "Material Color",
+            flag = "material_chams_color",
+            color = rgb(255, 255, 255),
+            alpha = 1,
+            callback = function(color, alpha)
+                -- Устанавливаем цвет материала в flags
+                library.flags["material_chams_color"] = {Color = color}
+                
+                if not library.flags["material_chams_enabled"] then return end
+                _G.espFramework:updateAllMaterialColors(library.flags)
+            end,
+            info = "Цвет материала для chams"
         })
         
     end
