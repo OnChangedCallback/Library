@@ -1297,7 +1297,8 @@ do
         end
         
         -- // screen position
-        local boxPos, onScreen = camera:WorldToViewportPoint(hrp.Position)
+        local hrpPosition = hrp.Position
+        local boxPos, onScreen = camera:WorldToViewportPoint(hrpPosition)
         
         if not onScreen then
             espData.box.Visible = false
@@ -1310,28 +1311,29 @@ do
             return
         end
         
+        -- // distance для динамических отступов
+        local distance = (hrpPosition - camera.CFrame.Position).Magnitude
+        
         -- // box dimensions
         local sizeX = 2.5
         local sizeY = 6
         local sizeZ = 1.5
         
-        -- // 8 corners calculation
+        -- // 6 corners calculation (оптимизировано)
         local corners = {
-            camera:WorldToViewportPoint((hrp.CFrame * cfr(-sizeX/2, -sizeY/2, -sizeZ/2)).Position),
-            camera:WorldToViewportPoint((hrp.CFrame * cfr(sizeX/2, -sizeY/2, -sizeZ/2)).Position),
-            camera:WorldToViewportPoint((hrp.CFrame * cfr(-sizeX/2, sizeY/2, -sizeZ/2)).Position),
-            camera:WorldToViewportPoint((hrp.CFrame * cfr(sizeX/2, sizeY/2, -sizeZ/2)).Position),
-            camera:WorldToViewportPoint((hrp.CFrame * cfr(-sizeX/2, -sizeY/2, sizeZ/2)).Position),
-            camera:WorldToViewportPoint((hrp.CFrame * cfr(sizeX/2, -sizeY/2, sizeZ/2)).Position),
-            camera:WorldToViewportPoint((hrp.CFrame * cfr(-sizeX/2, sizeY/2, sizeZ/2)).Position),
-            camera:WorldToViewportPoint((hrp.CFrame * cfr(sizeX/2, sizeY/2, sizeZ/2)).Position)
+            camera:WorldToViewportPoint((hrp.CFrame * cfr(-sizeX/2, -sizeY/2, 0)).Position),
+            camera:WorldToViewportPoint((hrp.CFrame * cfr(sizeX/2, -sizeY/2, 0)).Position),
+            camera:WorldToViewportPoint((hrp.CFrame * cfr(-sizeX/2, sizeY/2, 0)).Position),
+            camera:WorldToViewportPoint((hrp.CFrame * cfr(sizeX/2, sizeY/2, 0)).Position),
+            camera:WorldToViewportPoint((hrp.CFrame * cfr(0, -sizeY/2, sizeZ/2)).Position),
+            camera:WorldToViewportPoint((hrp.CFrame * cfr(0, sizeY/2, sizeZ/2)).Position)
         }
         
         -- // min/max coordinates
         local minX, minY = math.huge, math.huge
         local maxX, maxY = -math.huge, -math.huge
         
-        for i = 1, 8 do
+        for i = 1, 6 do
             local corner = corners[i]
             minX = min(minX, corner.X)
             minY = min(minY, corner.Y)
@@ -1368,8 +1370,7 @@ do
                 local lerpedHealth = lastHealth + (currentHealth - lastHealth) * 0.05
                 espData.lastHealth = lerpedHealth
                 
-                -- // dynamic offset
-                local distance = (hrp.Position - camera.CFrame.Position).Magnitude
+                -- // dynamic offset (используем уже вычисленное distance)
                 local baseOffset = 4.1
                 local scaleFactor = clamp(1 + (distance / 100) * 0.2, 1, 1.2)
                 local dynamicOffset = baseOffset * scaleFactor
@@ -1421,8 +1422,7 @@ do
             local lerpedArmor = lastArmor + (currentArmor - lastArmor) * 0.05
             espData.lastArmor = lerpedArmor
             
-            -- // dynamic offset
-            local distance = (hrp.Position - camera.CFrame.Position).Magnitude
+            -- // dynamic offset (используем уже вычисленное distance)
             local baseOffset = 4.1
             local scaleFactor = clamp(1 + (distance / 100) * 0.2, 1, 1.2)
             local dynamicOffset = baseOffset * scaleFactor
@@ -1541,21 +1541,33 @@ do
     function espFramework:startESP()
         if espConnection then return end
         
-        -- 60 FPS обновление (каждые ~0.0167 секунд)
-        espConnection = task_spawn(function()
-            while true do
-                task_wait(1/60)
-                espFramework:updateAllBoxes(library.flags)
-            end
+        -- RenderStepped обновление для плавности
+        espConnection = run.RenderStepped:Connect(function()
+            espFramework:updateAllBoxes(library.flags)
         end)
     end
     
     function espFramework:stopESP()
         if espConnection then
-            task_cancel(espConnection)
+            espConnection:Disconnect()
             espConnection = nil
         end
         espFramework:clearAll()
+    end
+    
+    function espFramework:shouldESPRun()
+        local flags = library.flags
+        return (flags and flags["box_esp_enabled"]) or 
+               (flags and flags["healthbar_enabled"]) or 
+               (flags and flags["armorbar_enabled"])
+    end
+    
+    function espFramework:checkESPState()
+        if espFramework:shouldESPRun() then
+            espFramework:startESP()
+        else
+            espFramework:stopESP()
+        end
     end
     
     _G.espFramework = espFramework
@@ -2538,6 +2550,9 @@ do
             type = "toggle",
             default = false,
             callback = function(bool)
+                -- Устанавливаем boolean значение в flags
+                library.flags["box_esp_enabled"] = bool
+                
                 if bool then
                     -- // create esp for all players
                     for _, player in ipairs(players:GetPlayers()) do
@@ -2554,7 +2569,8 @@ do
                     end
                     _G.espFramework:startESP()
                 else
-                    _G.espFramework:stopESP()
+                    -- Проверяем нужно ли останавливать ESP
+                    _G.espFramework:checkESPState()
                 end
             end,
             info = "Показывает рамки вокруг игроков"
@@ -2569,6 +2585,9 @@ do
             flag = "box_color_1",
             default = rgb(255, 255, 255),
             callback = function(color)
+                -- Устанавливаем цвет в flags
+                library.flags["box_color_1"] = {Color = color}
+                
                 if not library.flags["box_esp_enabled"] then return end
                 for _, player in ipairs(players:GetPlayers()) do
                     local espData = _G.espFramework:getESP(player)
@@ -2656,6 +2675,9 @@ do
             type = "toggle",
             default = false,
             callback = function(bool)
+                -- Устанавливаем boolean значение в flags
+                library.flags["healthbar_enabled"] = bool
+                
                 if bool then
                     -- // create esp for all players
                     for _, player in ipairs(players:GetPlayers()) do
@@ -2672,7 +2694,8 @@ do
                     end
                     _G.espFramework:startESP()
                 else
-                    -- Не останавливаем ESP полностью, просто скрываем healthbar
+                    -- Проверяем нужно ли останавливать ESP
+                    _G.espFramework:checkESPState()
                 end
             end,
             info = "Показывает полоски здоровья игроков"
@@ -2687,6 +2710,9 @@ do
             flag = "healthbar_color_1",
             default = rgb(0, 255, 0),
             callback = function(color)
+                -- Устанавливаем цвет в flags
+                library.flags["healthbar_color_1"] = {Color = color}
+                
                 if not library.flags["healthbar_enabled"] then return end
                 for _, player in ipairs(players:GetPlayers()) do
                     local espData = _G.espFramework:getESP(player)
@@ -2774,6 +2800,9 @@ do
             type = "toggle",
             default = false,
             callback = function(bool)
+                -- Устанавливаем boolean значение в flags
+                library.flags["armorbar_enabled"] = bool
+                
                 if bool then
                     -- // create esp for all players
                     for _, player in ipairs(players:GetPlayers()) do
@@ -2790,7 +2819,8 @@ do
                     end
                     _G.espFramework:startESP()
                 else
-                    -- Не останавливаем ESP полностью, просто скрываем armorbar
+                    -- Проверяем нужно ли останавливать ESP
+                    _G.espFramework:checkESPState()
                 end
             end,
             info = "Показывает полоски брони игроков"
