@@ -1570,6 +1570,94 @@ do
         end
     end
     
+    -- // Highlight Chams Functions
+    function espFramework:createHighlight(player)
+        if not player or not player.Character then return end
+        
+        local character = player.Character
+        local existingHighlight = character:FindFirstChild("ESPHighlight")
+        
+        if existingHighlight then
+            existingHighlight:Destroy()
+        end
+        
+        local highlight = instance_new("Highlight")
+        highlight.Name = "ESPHighlight"
+        highlight.Adornee = character
+        highlight.FillColor = library.flags["highlight_fill_color"] and library.flags["highlight_fill_color"].Color or rgb(255, 0, 0)
+        highlight.OutlineColor = library.flags["highlight_outline_color"] and library.flags["highlight_outline_color"].Color or rgb(255, 255, 255)
+        highlight.FillTransparency = library.flags["highlight_fill_transparency"] or 0.5
+        highlight.OutlineTransparency = library.flags["highlight_outline_transparency"] or 0
+        highlight.Parent = character
+        
+        return highlight
+    end
+    
+    function espFramework:removeHighlight(player)
+        if not player or not player.Character then return end
+        
+        local character = player.Character
+        local highlight = character:FindFirstChild("ESPHighlight")
+        
+        if highlight then
+            highlight:Destroy()
+        end
+    end
+    
+    function espFramework:updateAllHighlights(flags)
+        for _, player in ipairs(players:GetPlayers()) do
+            if player ~= lp and player.Character then
+                local character = player.Character
+                local highlight = character:FindFirstChild("ESPHighlight")
+                
+                if highlight then
+                    highlight.FillColor = flags["highlight_fill_color"] and flags["highlight_fill_color"].Color or rgb(255, 0, 0)
+                    highlight.OutlineColor = flags["highlight_outline_color"] and flags["highlight_outline_color"].Color or rgb(255, 255, 255)
+                    highlight.FillTransparency = flags["highlight_fill_transparency"] or 0.5
+                    highlight.OutlineTransparency = flags["highlight_outline_transparency"] or 0
+                end
+            end
+        end
+    end
+    
+    function espFramework:clearAllHighlights()
+        for _, player in ipairs(players:GetPlayers()) do
+            if player ~= lp then
+                espFramework:removeHighlight(player)
+            end
+        end
+    end
+    
+    -- // Player Events для Highlight Chams
+    players.PlayerAdded:Connect(function(player)
+        if player ~= lp then
+            player.CharacterAdded:Connect(function(character)
+                task_wait(1) -- Ждем полной загрузки персонажа
+                if library.flags["highlight_chams_enabled"] then
+                    espFramework:createHighlight(player)
+                end
+            end)
+        end
+    end)
+    
+    players.PlayerRemoving:Connect(function(player)
+        if player ~= lp then
+            espFramework:removeHighlight(player)
+        end
+    end)
+    
+    -- Обработка уже существующих игроков
+    for _, player in ipairs(players:GetPlayers()) do
+        if player ~= lp then
+            player.CharacterAdded:Connect(function(character)
+                task_wait(1) -- Ждем полной загрузки персонажа
+                if library.flags["highlight_chams_enabled"] then
+                    espFramework:createHighlight(player)
+                end
+            end)
+        end
+    end
+    
     _G.espFramework = espFramework
 end
 
@@ -2913,6 +3001,68 @@ do
                 end
             end,
             info = "Поворот градиента брони в градусах"
+        })
+        
+        -- Highlight Chams Toggle
+        local highlightChamsToggle = section:toggle({
+            name = "Highlight Chams",
+            flag = "highlight_chams_enabled",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                -- Устанавливаем boolean значение в flags
+                library.flags["highlight_chams_enabled"] = bool
+                
+                if bool then
+                    -- Создаем highlight для всех игроков
+                    for _, player in ipairs(players:GetPlayers()) do
+                        if player ~= lp and player.Character then
+                            _G.espFramework:createHighlight(player)
+                        end
+                    end
+                else
+                    -- Удаляем все highlight
+                    _G.espFramework:clearAllHighlights()
+                end
+            end,
+            info = "Подсвечивает игроков через стены"
+        })
+        
+        -- Highlight Chams Settings
+        local highlightSettings = highlightChamsToggle:settings({})
+        
+        -- Fill Color
+        highlightSettings:colorpicker({
+            name = "Fill Color",
+            flag = "highlight_fill_color",
+            color = rgb(255, 0, 0),
+            alpha = 0.5,
+            callback = function(color, alpha)
+                -- Устанавливаем цвет и прозрачность в flags
+                library.flags["highlight_fill_color"] = {Color = color}
+                library.flags["highlight_fill_transparency"] = alpha
+                
+                if not library.flags["highlight_chams_enabled"] then return end
+                _G.espFramework:updateAllHighlights(library.flags)
+            end,
+            info = "Цвет и прозрачность заливки highlight"
+        })
+        
+        -- Outline Color
+        highlightSettings:colorpicker({
+            name = "Outline Color",
+            flag = "highlight_outline_color",
+            color = rgb(255, 255, 255),
+            alpha = 0,
+            callback = function(color, alpha)
+                -- Устанавливаем цвет и прозрачность в flags
+                library.flags["highlight_outline_color"] = {Color = color}
+                library.flags["highlight_outline_transparency"] = alpha
+                
+                if not library.flags["highlight_chams_enabled"] then return end
+                _G.espFramework:updateAllHighlights(library.flags)
+            end,
+            info = "Цвет и прозрачность обводки highlight"
         })
         
     end
