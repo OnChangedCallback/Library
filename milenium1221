@@ -75,6 +75,27 @@ local udim2_offset = UDim2.fromOffset
 -- // Library
 local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/OnChangedCallback/Library/refs/heads/main/v5"))()
 
+-- // FFlags Normalization
+do
+    local function checkFFlags()
+        -- Нормализация флагов при запуске скрипта
+        local maxBandwidth = getfflag("PhysicsSenderMaxBandwidthBps")
+        if maxBandwidth ~= 13 then
+            setfflag("PhysicsSenderMaxBandwidthBps", "13")
+            print("ФлагПрименен" .. maxBandwidth)
+        end
+        
+        local senderRate = getfflag("S2PhysicsSenderRate")
+        if senderRate ~= 1 then
+            setfflag("S2PhysicsSenderRate", "1")
+            print("ФлагПрименен" .. senderRate)
+        end
+    end
+    
+    -- Вызываем нормализацию при запуске скрипта
+    checkFFlags()
+end
+
 -- // Utility Functions
 do
     local utility = {}
@@ -476,6 +497,201 @@ do
     
     -- Start main loop
     MainVelocityBreaker()
+end
+
+-- // AntiFling Module
+do
+    local antiFlingSettings = {
+        enabled = false
+    }
+    
+    local antiFlingConnection = nil
+    
+    local function DisableCollisionsForAllPlayers()
+        if not antiFlingSettings.enabled then return end
+        
+        for _, player in ipairs(players:GetPlayers()) do
+            if player ~= lp and player.Character then
+                for _, part in ipairs(player.Character:GetDescendants()) do
+                    if part:IsA("BasePart") and part.CanCollide then
+                        part.CanCollide = false
+                    end
+                end
+            end
+        end
+    end
+    
+    local function RestoreCollisionsForAllPlayers()
+        for _, player in ipairs(players:GetPlayers()) do
+            if player ~= lp and player.Character then
+                for _, part in ipairs(player.Character:GetDescendants()) do
+                    if part:IsA("BasePart") and not part.CanCollide then
+                        part.CanCollide = true
+                    end
+                end
+            end
+        end
+    end
+    
+    local function StartAntiFling()
+        if antiFlingConnection then
+            antiFlingConnection:Disconnect()
+        end
+        
+        if not antiFlingSettings.enabled then return end
+        
+        -- Постоянный мониторинг и отключение коллизий
+        antiFlingConnection = run.Heartbeat:Connect(function()
+            if antiFlingSettings.enabled then
+                DisableCollisionsForAllPlayers()
+            end
+        end)
+    end
+    
+    local function StopAntiFling()
+        if antiFlingConnection then
+            antiFlingConnection:Disconnect()
+            antiFlingConnection = nil
+        end
+        
+        -- Восстанавливаем коллизии для всех игроков
+        RestoreCollisionsForAllPlayers()
+    end
+    
+    _G.antiFlingSettings = antiFlingSettings
+    _G.StartAntiFling = StartAntiFling
+    _G.StopAntiFling = StopAntiFling
+end
+
+-- // AntiInertia Module
+do
+    local antiInertiaSettings = {
+        enabled = false,
+        noInertia = true,
+        speed = {
+            ground = 1.0,
+            air = 0.8
+        }
+    }
+    
+    local antiInertiaConnection = nil
+    
+    local function ToggleAntiInertia(state)
+        antiInertiaSettings.enabled = state
+        if antiInertiaConnection then
+            antiInertiaConnection:Disconnect()
+            antiInertiaConnection = nil
+        end
+        
+        if state then
+            antiInertiaConnection = run.Heartbeat:Connect(function()
+                if not antiInertiaSettings.enabled then return end
+                
+                local character = lp.Character
+                if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+                
+                local humanoid = character:FindFirstChildOfClass("Humanoid")
+                if not humanoid then return end
+                
+                local rootPart = character.HumanoidRootPart
+                local moveDir = humanoid.MoveDirection
+                
+                if moveDir.Magnitude > 0 then
+                    -- Просто убираем инерцию без изменения скорости
+                    if antiInertiaSettings.noInertia then
+                        local currentVel = rootPart.Velocity
+                        rootPart.Velocity = vec3(currentVel.X, currentVel.Y, currentVel.Z)
+                    end
+                elseif antiInertiaSettings.noInertia then
+                    rootPart.Velocity = vec3(0, rootPart.Velocity.Y, 0)
+                end
+            end)
+        end
+    end
+    
+    _G.antiInertiaSettings = antiInertiaSettings
+    _G.ToggleAntiInertia = ToggleAntiInertia
+end
+
+-- // LagSwitch Module
+do
+    local lagSwitchSettings = {
+        enabled = false,
+        desyncDelay = 1.2  -- задержка между десинком (freeze + unfreeze)
+    }
+    
+    local lagSwitchConnection = nil
+    local isInitialized = false
+    
+    local function checkFFlags()
+        -- Нормализация флагов при первом запуске
+        local maxBandwidth = getfflag("PhysicsSenderMaxBandwidthBps")
+        if maxBandwidth ~= 13 then
+            setfflag("PhysicsSenderMaxBandwidthBps", "13")
+        end
+        
+        local senderRate = getfflag("S2PhysicsSenderRate")
+        if senderRate ~= 1 then
+            setfflag("S2PhysicsSenderRate", "1")
+        end
+        
+        isInitialized = true
+    end
+    
+    local function freezePlayer()
+        setfflag("PhysicsSenderMaxBandwidthBps", "1")
+        setfflag("S2PhysicsSenderRate", "200")
+    end
+    
+    local function unfreezePlayer()
+        setfflag("PhysicsSenderMaxBandwidthBps", "13")
+        setfflag("S2PhysicsSenderRate", "1")
+    end
+    
+    local function StartLagSwitch()
+        if lagSwitchConnection then
+            lagSwitchConnection:Disconnect()
+            lagSwitchConnection = nil
+        end
+        
+        if not lagSwitchSettings.enabled then return end
+        
+        -- Инициализация флагов при первом запуске
+        if not isInitialized then
+            checkFFlags()
+        end
+        
+        lagSwitchConnection = coroutine.create(function()
+            while lagSwitchSettings.enabled do
+                -- Фриз игрока
+                freezePlayer()
+                task_wait(lagSwitchSettings.desyncDelay) -- задержка между freeze и unfreeze (слайдер)
+                
+                -- Анфриз игрока
+                unfreezePlayer()
+                task_wait(0.2) -- короткая пауза перед следующим циклом
+            end
+        end)
+        
+        coroutine.resume(lagSwitchConnection)
+    end
+    
+    local function StopLagSwitch()
+        lagSwitchSettings.enabled = false
+        
+        if lagSwitchConnection then
+            lagSwitchConnection = nil
+        end
+        
+        -- Восстанавливаем нормальные флаги при выключении
+        if isInitialized then
+            unfreezePlayer()
+        end
+    end
+    
+    _G.lagSwitchSettings = lagSwitchSettings
+    _G.StartLagSwitch = StartLagSwitch
+    _G.StopLagSwitch = StopLagSwitch
 end
 
 -- // Window
@@ -1441,6 +1657,69 @@ do
                 _G.velocityBreakerSettings.velocityZ = value
             end,
             info = "Скорость по оси Z"
+        })
+        
+        -- AntiFling Toggle
+        section:toggle({
+            name = "AntiFling",
+            flag = "anti_fling_enabled",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.antiFlingSettings.enabled = bool
+                if bool then
+                    _G.StartAntiFling()
+                else
+                    _G.StopAntiFling()
+                end
+            end,
+            info = "Отключает коллизии других игроков для предотвращения флинга"
+        })
+        
+        -- AntiInertia Toggle
+        section:toggle({
+            name = "Anti Inertia",
+            flag = "anti_inertia_enabled",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.ToggleAntiInertia(bool)
+            end,
+            info = "Убирает инерцию движения для более точного контроля"
+        })
+        
+        -- LagSwitch Toggle
+        local lagSwitchToggle = section:toggle({
+            name = "LagSwitch",
+            flag = "lag_switch_enabled",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.lagSwitchSettings.enabled = bool
+                if bool then
+                    _G.StartLagSwitch()
+                else
+                    _G.StopLagSwitch()
+                end
+            end,
+            info = "Создает лаг-десинк для анти-эйма через изменение сетевых флагов"
+        })
+        
+        -- LagSwitch Settings
+        local lagSwitchSettings = lagSwitchToggle:settings({})
+        
+        lagSwitchSettings:slider({
+            name = "Desync Delay",
+            flag = "lag_switch_desync_delay",
+            min = 0.1,
+            max = 5.0,
+            default = 1.2,
+            interval = 0.1,
+            suffix = "s",
+            callback = function(value)
+                _G.lagSwitchSettings.desyncDelay = value
+            end,
+            info = "Задержка между циклами десинка (фриз + анфриз + пауза)"
         })
     end
     
