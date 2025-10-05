@@ -397,38 +397,54 @@ do
         end
     end
     
+    local autoBuyConnection = nil
+    
     -- Main loop
-    local function MainAutoBuy()
-        while task_wait() do
-            if autoBuySettings.autoArmor.enabled then
-                local s, e = pcall(AutoArmor)
-                if not s then warn("[AutoBuy] Armor error:", e) end
-            end
-            
-            if autoBuySettings.autoGuns.enabled and lp.Character then
-                local s2, e2 = pcall(AutoWeaponsAndAmmo)
-                if not s2 then warn("[AutoBuy] weapons/ammo error:", e2) end
-            end
-            
-            if autoBuySettings.autoAmmo.enabled and lp.Character then
-                -- Auto ammo only for existing weapons
-                for _, weaponData in ipairs(WEAPONS) do
-                    if autoBuyUtility:hasWeapon(weaponData.Name) then
-                        local s3, e3 = pcall(AutoAmmo, weaponData.Name)
-                        if not s3 then warn("[AutoBuy] Ammo buy error:", weaponData.Name, e3) end
+    local function StartAutoBuy()
+        if autoBuyConnection then
+            autoBuyConnection = nil
+        end
+        
+        autoBuyConnection = coroutine.create(function()
+            while task_wait() do
+                if autoBuySettings.autoArmor.enabled then
+                    local s, e = pcall(AutoArmor)
+                    if not s then warn("[AutoBuy] Armor error:", e) end
+                end
+                
+                if autoBuySettings.autoGuns.enabled and lp.Character then
+                    local s2, e2 = pcall(AutoWeaponsAndAmmo)
+                    if not s2 then warn("[AutoBuy] weapons/ammo error:", e2) end
+                end
+                
+                if autoBuySettings.autoAmmo.enabled and lp.Character then
+                    -- Auto ammo only for existing weapons
+                    for _, weaponData in ipairs(WEAPONS) do
+                        if autoBuyUtility:hasWeapon(weaponData.Name) then
+                            local s3, e3 = pcall(AutoAmmo, weaponData.Name)
+                            if not s3 then warn("[AutoBuy] Ammo buy error:", weaponData.Name, e3) end
+                        end
                     end
                 end
             end
+        end)
+        
+        coroutine.resume(autoBuyConnection)
+    end
+    
+    local function StopAutoBuy()
+        if autoBuyConnection then
+            autoBuyConnection = nil
         end
     end
     
     _G.autoBuySettings = autoBuySettings
     _G.autoBuyUtility = autoBuyUtility
-    _G.MainAutoBuy = MainAutoBuy
+    _G.StartAutoBuy = StartAutoBuy
+    _G.StopAutoBuy = StopAutoBuy
     _G.WEAPONS = WEAPONS
     
-    -- Start main loop
-    coroutine.resume(coroutine.create(MainAutoBuy))
+    -- ✅ НЕ ЗАПУСКАЕМ АВТОМАТИЧЕСКИ!
 end
 
 -- // AntiStomp Module
@@ -438,24 +454,41 @@ do
         hpThreshold = 10
     }
     
-    local function MainAntiStomp()
-        while true do
-            wait(0.1)
-            
-            if antiStompSettings.enabled and lp.Character then
-                local humanoid = lp.Character:FindFirstChild("Humanoid")
-                if humanoid and humanoid.Health <= antiStompSettings.hpThreshold then
-                    -- Вызываем смерть локального игрока
-                    humanoid.Health = 0
+    local antiStompConnection = nil
+    
+    local function StartAntiStomp()
+        if antiStompConnection then
+            antiStompConnection = nil
+        end
+        
+        antiStompConnection = coroutine.create(function()
+            while true do
+                wait(0.1)
+                
+                if antiStompSettings.enabled and lp.Character then
+                    local humanoid = lp.Character:FindFirstChild("Humanoid")
+                    if humanoid and humanoid.Health <= antiStompSettings.hpThreshold then
+                        -- Вызываем смерть локального игрока
+                        humanoid.Health = 0
+                    end
                 end
             end
+        end)
+        
+        coroutine.resume(antiStompConnection)
+    end
+    
+    local function StopAntiStomp()
+        if antiStompConnection then
+            antiStompConnection = nil
         end
     end
     
     _G.antiStompSettings = antiStompSettings
+    _G.StartAntiStomp = StartAntiStomp
+    _G.StopAntiStomp = StopAntiStomp
     
-    -- Start main loop
-    coroutine.resume(coroutine.create(MainAntiStomp))
+    -- ✅ НЕ ЗАПУСКАЕМ АВТОМАТИЧЕСКИ!
 end
 
 -- // VelocityBreaker Module
@@ -469,9 +502,10 @@ do
     
     local velocityConnection = nil
     
-    local function MainVelocityBreaker()
+    local function StartVelocityBreaker()
         if velocityConnection then
             velocityConnection:Disconnect()
+            velocityConnection = nil
         end
         
         velocityConnection = run.Heartbeat:Connect(function()
@@ -492,11 +526,18 @@ do
         end)
     end
     
-    _G.velocityBreakerSettings = velocityBreakerSettings
-    _G.MainVelocityBreaker = MainVelocityBreaker
+    local function StopVelocityBreaker()
+        if velocityConnection then
+            velocityConnection:Disconnect()
+            velocityConnection = nil
+        end
+    end
     
-    -- Start main loop
-    MainVelocityBreaker()
+    _G.velocityBreakerSettings = velocityBreakerSettings
+    _G.StartVelocityBreaker = StartVelocityBreaker
+    _G.StopVelocityBreaker = StopVelocityBreaker
+    
+    -- ✅ НЕ ЗАПУСКАЕМ АВТОМАТИЧЕСКИ!
 end
 
 -- // AntiFling Module
@@ -2016,6 +2057,11 @@ do
             default = false,
             callback = function(bool)
                 _G.antiStompSettings.enabled = bool
+                if bool then
+                    _G.StartAntiStomp()
+                else
+                    _G.StopAntiStomp()
+                end
             end,
             info = "Автоматически вызывает смерть при низком HP"
         })
@@ -2044,6 +2090,11 @@ do
             default = false,
             callback = function(bool)
                 _G.velocityBreakerSettings.enabled = bool
+                if bool then
+                    _G.StartVelocityBreaker()
+                else
+                    _G.StopVelocityBreaker()
+                end
             end,
             info = "Изменяет скорость игрока для анти-эйма"
         })
@@ -2158,17 +2209,21 @@ do
         
         -- AutoArmor Toggle
         local autoArmorToggle = section:toggle({
-            name = "Auto Armor",
+            name = "AutoArmor",
             flag = "auto_armor_enabled",
             type = "toggle",
             callback = function(bool)
                 _G.autoBuySettings.autoArmor.enabled = bool
-            end
+                if bool then
+                    _G.StartAutoBuy()
+                else
+                    _G.StopAutoBuy()
+                end
+            end,
         })
         
         -- AutoArmor Settings
         local armorSettings = autoArmorToggle:settings({})
-        
         armorSettings:keybind({
             name = "Auto Armor Key",
             flag = "auto_armor_key",
@@ -2177,6 +2232,11 @@ do
             callback = function(active)
                 library.config_flags["auto_armor_enabled"](active)
                 _G.autoBuySettings.autoArmor.enabled = active
+                if active then
+                    _G.StartAutoBuy()
+                else
+                    _G.StopAutoBuy()
+                end
             end
         })
         
