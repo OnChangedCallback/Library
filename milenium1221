@@ -617,7 +617,7 @@ end
 do
     local lagSwitchSettings = {
         enabled = false,
-        desyncDelay = 1.2  -- задержка между десинком (freeze + unfreeze)
+        desyncDelay = 1.2  -- задержка между десинком (freezePlayer + unfreeze)
     }
     
     local lagSwitchConnection = nil
@@ -694,6 +694,342 @@ do
     _G.StopLagSwitch = StopLagSwitch
 end
 
+-- // SpeedHack Module
+do
+    local speedHackSettings = {
+        enabled = false,
+        speed = 1
+    }
+    
+    local speedHackConnection = nil
+    
+    local function hasCharacter(player)
+        return player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid")
+    end
+    
+    local function StartSpeedHack()
+        if speedHackConnection then
+            speedHackConnection:Disconnect()
+            speedHackConnection = nil
+        end
+        
+        speedHackConnection = run.Heartbeat:Connect(function(deltaTime)
+            if speedHackSettings.enabled and hasCharacter(lp) then
+                local speed = speedHackSettings.speed
+                local rootPart = lp.Character.HumanoidRootPart
+                local humanoid = lp.Character.Humanoid
+                
+                rootPart.CFrame = rootPart.CFrame + humanoid.MoveDirection * speed
+            end
+        end)
+    end
+    
+    local function StopSpeedHack()
+        if speedHackConnection then
+            speedHackConnection:Disconnect()
+            speedHackConnection = nil
+        end
+    end
+    
+    _G.speedHackSettings = speedHackSettings
+    _G.StartSpeedHack = StartSpeedHack
+    _G.StopSpeedHack = StopSpeedHack
+end
+
+-- // FlyHack Module
+do
+    local flyHackSettings = {
+        enabled = false,
+        speed = 50
+    }
+    
+    local flyHackConnection = nil
+    
+    local function hasCharacter(player)
+        return player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid")
+    end
+    
+    local function StartFlyHack()
+        if flyHackConnection then
+            flyHackConnection:Disconnect()
+            flyHackConnection = nil
+        end
+        
+        flyHackConnection = run.Heartbeat:Connect(function(deltaTime)
+            if flyHackSettings.enabled and hasCharacter(lp) then
+                local moveDirection = lp.Character.Humanoid.MoveDirection
+                local hrp = lp.Character.HumanoidRootPart
+                local flySpeed = flyHackSettings.speed
+                
+                -- Вертикальное движение (Space - вверх, LeftShift - вниз)
+                local add = vec3(0, (uis:IsKeyDown(enum.KeyCode.Space) and flySpeed / 8 or uis:IsKeyDown(enum.KeyCode.LeftShift) and -flySpeed / 8) or 0, 0)
+                
+                -- Горизонтальное движение
+                hrp.CFrame = hrp.CFrame + (moveDirection * deltaTime) * flySpeed * 10
+                hrp.CFrame = hrp.CFrame + add
+                hrp.Velocity = (hrp.Velocity * vec3(1, 0, 1)) + vec3(0, 1.9, 0)
+            end
+        end)
+    end
+    
+    local function StopFlyHack()
+        if flyHackConnection then
+            flyHackConnection:Disconnect()
+            flyHackConnection = nil
+        end
+    end
+    
+    _G.flyHackSettings = flyHackSettings
+    _G.StartFlyHack = StartFlyHack
+    _G.StopFlyHack = StopFlyHack
+end
+
+-- // NoJumpCooldown Module
+do
+    local noJumpCooldownSettings = {
+        enabled = false
+    }
+    
+    local noJumpCDOldNewIndex = nil
+    
+    local function StartNoJumpCooldown()
+        -- Ensure game is loaded before hook
+        if not game:IsLoaded() then 
+            game.Loaded:Wait() 
+        end
+        
+        -- Hook __newindex once, gate by enabled state
+        if not noJumpCDOldNewIndex then
+            noJumpCDOldNewIndex = hookmetamethod(game, "__newindex", function(self, Index, Value)
+                if not checkcaller() and self:IsA("Humanoid") and Index == "JumpPower" and noJumpCooldownSettings.enabled then
+                    return
+                end
+                return noJumpCDOldNewIndex(self, Index, Value)
+            end)
+        end
+    end
+    
+    local function StopNoJumpCooldown()
+        -- Просто отключаем функционал через enabled флаг
+        -- Хук остается активным, но не блокирует JumpPower
+        noJumpCooldownSettings.enabled = false
+    end
+    
+    -- Инициализируем хук сразу при загрузке модуля
+    StartNoJumpCooldown()
+    
+    _G.noJumpCooldownSettings = noJumpCooldownSettings
+    _G.StartNoJumpCooldown = StartNoJumpCooldown
+    _G.StopNoJumpCooldown = StopNoJumpCooldown
+end
+
+-- // HitboxExpander Module
+do
+    local hitboxExpanderSettings = {
+        enabled = false,
+        size = 10,
+        visible = false
+    }
+    
+    local hitboxExpandedPlayers = {}
+    local hitboxConnection = nil
+    
+    local function IsKO(player)
+        -- Простая проверка на KO - можно расширить при необходимости
+        return player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health <= 0
+    end
+    
+    local function ExpandHitbox(player, size, visible)
+        if not player.Character then return end
+        local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+        
+        if not hitboxExpandedPlayers[player] then
+            hitboxExpandedPlayers[player] = {
+                OriginalSize = hrp.Size,
+                OriginalTransparency = hrp.Transparency,
+                OriginalCanCollide = hrp.CanCollide,
+                SelectionBox = nil
+            }
+        end
+        
+        local data = hitboxExpandedPlayers[player]
+        hrp.Size = vec3(size, size, size)
+        hrp.CanCollide = false
+        
+        if visible then
+            hrp.Transparency = 0.5 -- partially transparent so visible but not fully blocking
+            if not data.SelectionBox then
+                local selBox = instance_new("SelectionBox")
+                selBox.Adornee = hrp
+                selBox.Color3 = rgb(255, 0, 0)
+                selBox.LineThickness = 0.05
+                selBox.SurfaceTransparency = 0.7
+                selBox.Parent = hrp
+                data.SelectionBox = selBox
+            end
+        else
+            hrp.Transparency = 1 -- fully invisible
+            if data.SelectionBox then
+                data.SelectionBox:Destroy()
+                data.SelectionBox = nil
+            end
+        end
+    end
+    
+    local function ResetHitbox(player)
+        if not player.Character then return end
+        local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+        local data = hitboxExpandedPlayers[player]
+        if hrp and data then
+            hrp.Size = data.OriginalSize
+            hrp.Transparency = data.OriginalTransparency
+            hrp.CanCollide = data.OriginalCanCollide
+            if data.SelectionBox then
+                data.SelectionBox:Destroy()
+                data.SelectionBox = nil
+            end
+            hitboxExpandedPlayers[player] = nil
+        end
+    end
+    
+    local function UpdateHitboxes()
+        local enabled = hitboxExpanderSettings.enabled
+        local size = hitboxExpanderSettings.size
+        local visible = hitboxExpanderSettings.visible
+        
+        for _, player in pairs(players:GetPlayers()) do
+            if player ~= lp and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                if enabled and not IsKO(player) then
+                    ExpandHitbox(player, size, visible)
+                else
+                    ResetHitbox(player)
+                end
+            end
+        end
+    end
+    
+    local function StartHitboxExpander()
+        if hitboxConnection then
+            hitboxConnection:Disconnect()
+            hitboxConnection = nil
+        end
+        
+        hitboxConnection = run.Heartbeat:Connect(UpdateHitboxes)
+    end
+    
+    local function StopHitboxExpander()
+        if hitboxConnection then
+            hitboxConnection:Disconnect()
+            hitboxConnection = nil
+        end
+        
+        -- Reset all hitboxes when stopping
+        for player, _ in pairs(hitboxExpandedPlayers) do
+            ResetHitbox(player)
+        end
+    end
+    
+    _G.hitboxExpanderSettings = hitboxExpanderSettings
+    _G.StartHitboxExpander = StartHitboxExpander
+    _G.StopHitboxExpander = StopHitboxExpander
+end
+
+-- // NoRecoil Module
+do
+    local noRecoilSettings = {
+        enabled = false
+    }
+    
+    local noRecoilOldNewIndex = nil
+    
+    local function isFramework(scr) 
+        return tostring(scr) == "Framework" 
+    end
+    
+    local function checkArgs(inst, idx) 
+        return tostring(inst):lower():find("camera") and tostring(idx) == "CFrame" 
+    end
+    
+    local function StartNoRecoil()
+        -- Ensure game is loaded before hook
+        if not game:IsLoaded() then 
+            game.Loaded:Wait() 
+        end
+        
+        -- Hook __newindex once, gate by enabled state
+        if not noRecoilOldNewIndex then
+            noRecoilOldNewIndex = hookmetamethod(game, "__newindex", function(self, idx, val)
+                if noRecoilSettings.enabled and isFramework(getcallingscript()) and checkArgs(self, idx) then 
+                    return 
+                end
+                return noRecoilOldNewIndex(self, idx, val)
+            end)
+        end
+    end
+    
+    local function StopNoRecoil()
+        -- Просто отключаем функционал через enabled флаг
+        -- Хук остается активным, но не блокирует CFrame
+        noRecoilSettings.enabled = false
+    end
+    
+    -- Инициализируем хук сразу при загрузке модуля
+    StartNoRecoil()
+    
+    _G.noRecoilSettings = noRecoilSettings
+    _G.StartNoRecoil = StartNoRecoil
+    _G.StopNoRecoil = StopNoRecoil
+end
+
+-- // NoSpread Module
+do
+    local noSpreadSettings = {
+        enabled = false,
+        amount = 0  -- 0-100, lower = less spread
+    }
+    
+    local noSpreadOldRandom = nil
+    
+    local function StartNoSpread()
+        -- Hook math.random once
+        if not noSpreadOldRandom then
+            noSpreadOldRandom = hookfunction(math.random, function(...)
+                local args = {...}
+                if checkcaller() then
+                    return noSpreadOldRandom(...)
+                end
+                
+                if (#args == 0) or 
+                   (args[1] == -0.05 and args[2] == 0.05) or 
+                   (args[1] == -0.1) or
+                   (args[1] == -0.05) then
+                    if noSpreadSettings.enabled then
+                        local spread = noSpreadSettings.amount
+                        return noSpreadOldRandom(...) * (spread / 100)
+                    else
+                        return noSpreadOldRandom(...)
+                    end
+                end
+                return noSpreadOldRandom(...)
+            end)
+        end
+    end
+    
+    local function StopNoSpread()
+        -- Просто отключаем функционал через enabled флаг
+        -- Хук остается активным, но не изменяет math.random
+        noSpreadSettings.enabled = false
+    end
+    
+    -- Инициализируем хук сразу при загрузке модуля
+    StartNoSpread()
+    
+    _G.noSpreadSettings = noSpreadSettings
+    _G.StartNoSpread = StartNoSpread
+    _G.StopNoSpread = StopNoSpread
+end
+
 -- // Window
 local window = library:window({
     name = "R4ZE", 
@@ -703,10 +1039,10 @@ local window = library:window({
 
 -- // Combat Tab
 do
-    local CameraBotTab, SilentBotTab = window:tab({
+    local CameraBotTab, SilentBotTab, OtherTab = window:tab({
         name = "Combat", 
         icon = "rbxassetid://10734975692",  -- lucide-target
-        tabs = {"CameraBot", "SilentBot"}
+        tabs = {"CameraBot", "SilentBot", "Other"}
     })
     
     -- CameraBot Section
@@ -1548,6 +1884,98 @@ do
             
         end
     end
+    
+    -- Other Section
+    do
+        local OtherSection = OtherTab:column({})
+        local section = OtherSection:section({name = "Other", default = false})
+        
+        -- HitboxExpander Toggle
+        local hitboxExpanderToggle = section:toggle({
+            name = "Hitbox Expander",
+            flag = "hitbox_expander_enabled",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.hitboxExpanderSettings.enabled = bool
+                if bool then
+                    _G.StartHitboxExpander()
+                else
+                    _G.StopHitboxExpander()
+                end
+            end,
+            info = "Увеличивает хитбоксы игроков для упрощения попадания"
+        })
+        
+        -- HitboxExpander Settings
+        local hitboxExpanderSettings = hitboxExpanderToggle:settings({})
+        
+        hitboxExpanderSettings:textbox({
+            name = "Hitbox Size",
+            flag = "hitbox_expander_size",
+            placeholder = "10",
+            default = "10",
+            callback = function(text)
+                local value = tonumber(text)
+                if value then
+                    _G.hitboxExpanderSettings.size = value
+                end
+            end,
+            info = "Размер увеличенного хитбокса (рекомендуется 5-20)"
+        })
+        
+        hitboxExpanderSettings:toggle({
+            name = "Visible Hitboxes",
+            flag = "hitbox_expander_visible",
+            type = "checkbox",
+            default = false,
+            callback = function(bool)
+                _G.hitboxExpanderSettings.visible = bool
+            end,
+            info = "Показывать увеличенные хитбоксы визуально"
+        })
+        
+        -- NoRecoil Toggle
+        section:toggle({
+            name = "No Recoil",
+            flag = "no_recoil_enabled",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.noRecoilSettings.enabled = bool
+            end,
+            info = "Убирает отдачу оружия через блокировку CFrame камеры"
+        })
+        
+        -- NoSpread Toggle
+        local noSpreadToggle = section:toggle({
+            name = "No Spread",
+            flag = "no_spread_enabled",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.noSpreadSettings.enabled = bool
+            end,
+            info = "Убирает разброс оружия через хук math.random"
+        })
+        
+        -- NoSpread Settings
+        local noSpreadSettings = noSpreadToggle:settings({})
+        
+        noSpreadSettings:slider({
+            name = "Spread Amount",
+            flag = "no_spread_amount",
+            min = 0,
+            max = 100,
+            default = 0,
+            interval = 1,
+            suffix = "%",
+            callback = function(value)
+                _G.noSpreadSettings.amount = value
+            end,
+            info = "Сила разброса (0% = нет разброса, 100% = полный разброс)"
+        })
+    end
 end
 
 -- // Visuals Tab  
@@ -1569,10 +1997,10 @@ end
 
 -- // Misc Tab
 do
-    local MiscTab, LoadoutTab = window:tab({
+    local MiscTab, LoadoutTab, MovementTab = window:tab({
         name = "Misc", 
         icon = "rbxassetid://10734934585",  -- lucide-rocket
-        tabs = {"General", "Loadout"}
+        tabs = {"General", "Loadout", "Movement"}
     })
     
     -- General Misc Section
@@ -1837,6 +2265,130 @@ do
                 library.config_flags["auto_ammo_enabled"](active)
                 _G.autoBuySettings.autoAmmo.enabled = active
             end
+        })
+    end
+    
+    -- Movement Section
+    do
+        local MovementSection = MovementTab:column({})
+        local section = MovementSection:section({name = "Movement", default = false})
+        
+        -- SpeedHack Toggle
+        local speedHackToggle = section:toggle({
+            name = "SpeedHack",
+            flag = "speed_hack_enabled",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.speedHackSettings.enabled = bool
+                if bool then
+                    _G.StartSpeedHack()
+                else
+                    _G.StopSpeedHack()
+                end
+            end,
+            info = "Увеличивает скорость передвижения через CFrame"
+        })
+        
+        -- SpeedHack Settings
+        local speedHackSettings = speedHackToggle:settings({})
+        
+        speedHackSettings:textbox({
+            name = "Speed Value",
+            flag = "speed_hack_value",
+            placeholder = "1",
+            default = "1",
+            callback = function(text)
+                local value = tonumber(text)
+                if value then
+                    _G.speedHackSettings.speed = value
+                end
+            end,
+            info = "Значение скорости (рекомендуется 1-5)"
+        })
+        
+        speedHackSettings:keybind({
+            name = "SpeedHack Key",
+            flag = "speed_hack_key",
+            key = enum.KeyCode.LeftShift,
+            mode = "Toggle",
+            default = false,
+            callback = function(active)
+                -- Кейбинд переключает состояние основного тогла
+                library.config_flags["speed_hack_enabled"](active)
+                _G.speedHackSettings.enabled = active
+                if active then
+                    _G.StartSpeedHack()
+                else
+                    _G.StopSpeedHack()
+                end
+            end,
+            info = "Клавиша для переключения SpeedHack"
+        })
+        
+        -- FlyHack Toggle
+        local flyHackToggle = section:toggle({
+            name = "FlyHack",
+            flag = "fly_hack_enabled",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.flyHackSettings.enabled = bool
+                if bool then
+                    _G.StartFlyHack()
+                else
+                    _G.StopFlyHack()
+                end
+            end,
+            info = "Позволяет летать с помощью CFrame (Space - вверх, Shift - вниз)"
+        })
+        
+        -- FlyHack Settings
+        local flyHackSettings = flyHackToggle:settings({})
+        
+        flyHackSettings:textbox({
+            name = "Fly Speed",
+            flag = "fly_hack_speed",
+            placeholder = "50",
+            default = "50",
+            callback = function(text)
+                local value = tonumber(text)
+                if value then
+                    _G.flyHackSettings.speed = value
+                end
+            end,
+            info = "Скорость полета (рекомендуется 30-100)"
+        })
+        
+        flyHackSettings:keybind({
+            name = "FlyHack Key",
+            flag = "fly_hack_key",
+            key = enum.KeyCode.F,
+            mode = "Toggle",
+            default = false,
+            callback = function(active)
+                -- Кейбинд переключает состояние основного тогла
+                library.config_flags["fly_hack_enabled"](active)
+                _G.flyHackSettings.enabled = active
+                if active then
+                    _G.StartFlyHack()
+                else
+                    _G.StopFlyHack()
+                end
+            end,
+            info = "Клавиша для переключения FlyHack"
+        })
+        
+        -- NoJumpCooldown Toggle
+        section:toggle({
+            name = "No Jump Cooldown",
+            flag = "no_jump_cooldown_enabled",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.noJumpCooldownSettings.enabled = bool
+            end,
+            info = "Убирает кулдаун прыжка через хук __newindex"
         })
     end
 end
