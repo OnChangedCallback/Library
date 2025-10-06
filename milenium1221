@@ -1931,6 +1931,287 @@ do
     _G.espFramework = espFramework
 end
 
+-- // SelfMaterial Module
+do
+    local selfMaterialSettings = {
+        enabled = false,
+        material = "ForceField",
+        color = rgb(255, 0, 0)
+    }
+    
+    local originalCharacterColors = {}
+    local selfMaterialConnection = nil
+    
+    local function StartSelfMaterial()
+        if selfMaterialConnection then
+            selfMaterialConnection:Disconnect()
+            selfMaterialConnection = nil
+        end
+        
+        selfMaterialConnection = run.Heartbeat:Connect(function()
+            if selfMaterialSettings.enabled and lp.Character then
+                local character = lp.Character
+                
+                for _, part in ipairs(character:GetChildren()) do
+                    if part:IsA("BasePart") then
+                        if not originalCharacterColors[part] then
+                            originalCharacterColors[part] = part.Color
+                        end
+                        
+                        part.Material = enum.Material[selfMaterialSettings.material]
+                        part.Color = selfMaterialSettings.color
+                    end
+                end
+            end
+        end)
+    end
+    
+    local function StopSelfMaterial()
+        if selfMaterialConnection then
+            selfMaterialConnection:Disconnect()
+            selfMaterialConnection = nil
+        end
+        
+        -- Восстанавливаем оригинальные цвета
+        if lp.Character then
+            for part, originalColor in pairs(originalCharacterColors) do
+                if part and part.Parent then
+                    part.Color = originalColor
+                    part.Material = enum.Material.Plastic -- Возвращаем стандартный материал
+                end
+            end
+        end
+        originalCharacterColors = {}
+    end
+    
+    _G.selfMaterialSettings = selfMaterialSettings
+    _G.StartSelfMaterial = StartSelfMaterial
+    _G.StopSelfMaterial = StopSelfMaterial
+end
+
+-- // SelfHighlight Module
+do
+    local selfHighlightSettings = {
+        enabled = false,
+        fillColor = rgb(255, 0, 0),
+        outlineColor = rgb(255, 255, 255),
+        fillTransparency = 0.5,
+        outlineTransparency = 0
+    }
+    
+    local selfHighlight = nil
+    
+    local function StartSelfHighlight()
+        if selfHighlight then
+            selfHighlight:Destroy()
+            selfHighlight = nil
+        end
+        
+        if lp.Character then
+            selfHighlight = instance_new("Highlight")
+            selfHighlight.Name = "SelfHighlight"
+            selfHighlight.Adornee = lp.Character
+            selfHighlight.FillColor = selfHighlightSettings.fillColor
+            selfHighlight.OutlineColor = selfHighlightSettings.outlineColor
+            selfHighlight.FillTransparency = selfHighlightSettings.fillTransparency
+            selfHighlight.OutlineTransparency = selfHighlightSettings.outlineTransparency
+            selfHighlight.Parent = lp.Character
+        end
+    end
+    
+    local function StopSelfHighlight()
+        if selfHighlight then
+            selfHighlight:Destroy()
+            selfHighlight = nil
+        end
+    end
+    
+    local function UpdateSelfHighlight()
+        if selfHighlight and selfHighlightSettings.enabled then
+            selfHighlight.FillColor = selfHighlightSettings.fillColor
+            selfHighlight.OutlineColor = selfHighlightSettings.outlineColor
+            selfHighlight.FillTransparency = selfHighlightSettings.fillTransparency
+            selfHighlight.OutlineTransparency = selfHighlightSettings.outlineTransparency
+        end
+    end
+    
+    -- Обработка респавна персонажа
+    lp.CharacterAdded:Connect(function(character)
+        if selfHighlightSettings.enabled then
+            task_wait(0.1) -- Ждем загрузки персонажа
+            StartSelfHighlight()
+        end
+    end)
+    
+    _G.selfHighlightSettings = selfHighlightSettings
+    _G.StartSelfHighlight = StartSelfHighlight
+    _G.StopSelfHighlight = StopSelfHighlight
+    _G.UpdateSelfHighlight = UpdateSelfHighlight
+end
+
+-- // GunMaterial Module
+do
+    local gunMaterialSettings = {
+        enabled = false,
+        material = "ForceField",
+        color = rgb(255, 0, 0)
+    }
+    
+    local originalGunColors = {}
+    local gunMaterialConnection = nil
+    
+    local function ApplyGunMaterial()
+        if lp.Character then
+            for _, tool in ipairs(lp.Character:GetChildren()) do
+                if tool:IsA("Tool") then
+                    for _, part in ipairs(tool:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            -- Сохраняем оригинальный цвет при первом применении
+                            if not originalGunColors[part] then
+                                originalGunColors[part] = part.Color
+                            end
+                            
+                            part.Material = enum.Material[gunMaterialSettings.material]
+                            part.Color = gunMaterialSettings.color
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    local function StartGunMaterial()
+        if gunMaterialConnection then
+            gunMaterialConnection:Disconnect()
+            gunMaterialConnection = nil
+        end
+        
+        gunMaterialConnection = run.Heartbeat:Connect(function()
+            if gunMaterialSettings.enabled then
+                ApplyGunMaterial()
+            end
+        end)
+    end
+    
+    local function StopGunMaterial()
+        if gunMaterialConnection then
+            gunMaterialConnection:Disconnect()
+            gunMaterialConnection = nil
+        end
+        
+        -- Восстанавливаем оригинальные цвета и материалы
+        if lp.Character then
+            for _, tool in ipairs(lp.Character:GetChildren()) do
+                if tool:IsA("Tool") then
+                    for _, part in ipairs(tool:GetDescendants()) do
+                        if part:IsA("BasePart") and originalGunColors[part] then
+                            part.Color = originalGunColors[part]
+                            part.Material = enum.Material.Plastic -- Возвращаем стандартный материал
+                        end
+                    end
+                end
+            end
+        end
+        originalGunColors = {}
+    end
+    
+    _G.gunMaterialSettings = gunMaterialSettings
+    _G.StartGunMaterial = StartGunMaterial
+    _G.StopGunMaterial = StopGunMaterial
+    _G.ApplyGunMaterial = ApplyGunMaterial
+end
+
+-- // GunHighlight Module
+do
+    local gunHighlightSettings = {
+        enabled = false,
+        fillColor = rgb(255, 0, 0),
+        outlineColor = rgb(255, 255, 255),
+        fillTransparency = 0.5,
+        outlineTransparency = 0
+    }
+    
+    local gunHighlights = {}
+    local gunHighlightConnection = nil
+    
+    local function ApplyGunHighlight()
+        if lp.Character then
+            for _, tool in ipairs(lp.Character:GetChildren()) do
+                if tool:IsA("Tool") then
+                    -- Удаляем старый highlight если есть
+                    local existingHighlight = tool:FindFirstChild("GunHighlight")
+                    if existingHighlight then
+                        existingHighlight:Destroy()
+                    end
+                    
+                    -- Создаем новый highlight
+                    local highlight = instance_new("Highlight")
+                    highlight.Name = "GunHighlight"
+                    highlight.Adornee = tool
+                    highlight.FillColor = gunHighlightSettings.fillColor
+                    highlight.OutlineColor = gunHighlightSettings.outlineColor
+                    highlight.FillTransparency = gunHighlightSettings.fillTransparency
+                    highlight.OutlineTransparency = gunHighlightSettings.outlineTransparency
+                    highlight.Parent = tool
+                    
+                    gunHighlights[tool] = highlight
+                end
+            end
+        end
+    end
+    
+    local function StartGunHighlight()
+        if gunHighlightConnection then
+            gunHighlightConnection:Disconnect()
+            gunHighlightConnection = nil
+        end
+        
+        gunHighlightConnection = run.Heartbeat:Connect(function()
+            if gunHighlightSettings.enabled then
+                ApplyGunHighlight()
+            end
+        end)
+    end
+    
+    local function StopGunHighlight()
+        if gunHighlightConnection then
+            gunHighlightConnection:Disconnect()
+            gunHighlightConnection = nil
+        end
+        
+        -- Удаляем все highlights с оружия
+        if lp.Character then
+            for _, tool in ipairs(lp.Character:GetChildren()) do
+                if tool:IsA("Tool") then
+                    local highlight = tool:FindFirstChild("GunHighlight")
+                    if highlight then
+                        highlight:Destroy()
+                    end
+                end
+            end
+        end
+        gunHighlights = {}
+    end
+    
+    local function UpdateGunHighlight()
+        if gunHighlightSettings.enabled then
+            for tool, highlight in pairs(gunHighlights) do
+                if highlight and highlight.Parent then
+                    highlight.FillColor = gunHighlightSettings.fillColor
+                    highlight.OutlineColor = gunHighlightSettings.outlineColor
+                    highlight.FillTransparency = gunHighlightSettings.fillTransparency
+                    highlight.OutlineTransparency = gunHighlightSettings.outlineTransparency
+                end
+            end
+        end
+    end
+    
+    _G.gunHighlightSettings = gunHighlightSettings
+    _G.StartGunHighlight = StartGunHighlight
+    _G.StopGunHighlight = StopGunHighlight
+    _G.UpdateGunHighlight = UpdateGunHighlight
+end
+
 -- // Window
 local window = library:window({
     name = "R4ZE", 
@@ -2892,8 +3173,167 @@ do
         local VisualsSection = VisualsTab:column({})
         local section = VisualsSection:section({name = "General", default = false})
         
-        -- Placeholder for general visual features
-        section:label({text = "General visual features will be added here"})
+        -- SelfMaterial Toggle
+        local selfMaterialToggle = section:toggle({
+            name = "SelfMaterial",
+            flag = "self_material_enabled",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.selfMaterialSettings.enabled = bool
+                
+                if bool then
+                    _G.StartSelfMaterial()
+                else
+                    _G.StopSelfMaterial()
+                end
+            end,
+            info = "Изменяет материал и цвет вашего персонажа"
+        })
+        
+        -- SelfMaterial Settings
+        local selfMaterialSettings = selfMaterialToggle:settings({})
+        
+        -- Character Color Picker
+        selfMaterialSettings:colorpicker({
+            name = "Character Color",
+            flag = "self_material_color",
+            default = rgb(255, 0, 0),
+            callback = function(color)
+                _G.selfMaterialSettings.color = color
+            end,
+            info = "Цвет персонажа"
+        })
+        
+        -- SelfHighlight Toggle
+        local selfHighlightToggle = section:toggle({
+            name = "SelfHighlight",
+            flag = "self_highlight_enabled",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.selfHighlightSettings.enabled = bool
+                
+                if bool then
+                    _G.StartSelfHighlight()
+                else
+                    _G.StopSelfHighlight()
+                end
+            end,
+            info = "Добавляет подсветку вашему персонажу"
+        })
+        
+        -- SelfHighlight Settings
+        local selfHighlightSettings = selfHighlightToggle:settings({})
+        
+        -- Fill Color Picker with Fade
+        selfHighlightSettings:colorpicker({
+            name = "Fill Color",
+            flag = "self_highlight_fill_color",
+            default = rgb(255, 0, 0),
+            fade = true,
+            callback = function(color, fade)
+                _G.selfHighlightSettings.fillColor = color
+                _G.selfHighlightSettings.fillTransparency = 1 - fade
+                _G.UpdateSelfHighlight()
+            end,
+            info = "Цвет и прозрачность заливки подсветки"
+        })
+        
+        -- Outline Color Picker with Fade
+        selfHighlightSettings:colorpicker({
+            name = "Outline Color",
+            flag = "self_highlight_outline_color",
+            default = rgb(255, 255, 255),
+            fade = true,
+            callback = function(color, fade)
+                _G.selfHighlightSettings.outlineColor = color
+                _G.selfHighlightSettings.outlineTransparency = 1 - fade
+                _G.UpdateSelfHighlight()
+            end,
+            info = "Цвет и прозрачность контура подсветки"
+        })
+        
+        -- GunMaterial Toggle
+        local gunMaterialToggle = section:toggle({
+            name = "GunMaterial",
+            flag = "gun_material_enabled",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.gunMaterialSettings.enabled = bool
+                
+                if bool then
+                    _G.StartGunMaterial()
+                else
+                    _G.StopGunMaterial()
+                end
+            end,
+            info = "Изменяет материал и цвет оружия в руках"
+        })
+        
+        -- GunMaterial Settings
+        local gunMaterialSettings = gunMaterialToggle:settings({})
+        
+        -- Gun Color Picker
+        gunMaterialSettings:colorpicker({
+            name = "Gun Color",
+            flag = "gun_material_color",
+            default = rgb(255, 0, 0),
+            callback = function(color)
+                _G.gunMaterialSettings.color = color
+            end,
+            info = "Цвет оружия (материал ForceField)"
+        })
+        
+        -- GunHighlight Toggle
+        local gunHighlightToggle = section:toggle({
+            name = "GunHighlight",
+            flag = "gun_highlight_enabled",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.gunHighlightSettings.enabled = bool
+                
+                if bool then
+                    _G.StartGunHighlight()
+                else
+                    _G.StopGunHighlight()
+                end
+            end,
+            info = "Добавляет подсветку оружию в руках"
+        })
+        
+        -- GunHighlight Settings
+        local gunHighlightSettings = gunHighlightToggle:settings({})
+        
+        -- Fill Color Picker with Fade
+        gunHighlightSettings:colorpicker({
+            name = "Fill Color",
+            flag = "gun_highlight_fill_color",
+            default = rgb(255, 0, 0),
+            fade = true,
+            callback = function(color, fade)
+                _G.gunHighlightSettings.fillColor = color
+                _G.gunHighlightSettings.fillTransparency = 1 - fade
+                _G.UpdateGunHighlight()
+            end,
+            info = "Цвет и прозрачность заливки подсветки оружия"
+        })
+        
+        -- Outline Color Picker with Fade
+        gunHighlightSettings:colorpicker({
+            name = "Outline Color",
+            flag = "gun_highlight_outline_color",
+            default = rgb(255, 255, 255),
+            fade = true,
+            callback = function(color, fade)
+                _G.gunHighlightSettings.outlineColor = color
+                _G.gunHighlightSettings.outlineTransparency = 1 - fade
+                _G.UpdateGunHighlight()
+            end,
+            info = "Цвет и прозрачность контура подсветки оружия"
+        })
     end
     
     -- ESP Section
