@@ -78,7 +78,6 @@ getgenv().library = {
     connections = {},   
     notifications = {notifs = {}},
     current_open; 
-    current_colorpicker_instance; -- Добавлена новая переменная для отслеживания текущего открытого колорпикера
 }
 
 local themes = {
@@ -465,13 +464,6 @@ end
 
         if new_path ~= open_element then 
             library.current_open = new_path or nil;
-        end
-
-        -- Дополнительная логика для закрытия колорпикера
-        if library.current_colorpicker_instance and new_path ~= library.current_colorpicker_instance then
-            library.current_colorpicker_instance.open = false
-            library.current_colorpicker_instance.set_visible(false)
-            library.current_colorpicker_instance = nil
         end
     end 
 
@@ -2694,19 +2686,6 @@ end
         end;
 
         function cfg.set_visible(bool)
-            if bool then
-                -- Если открываем новый колорпикер, закрываем предыдущий, если он есть и это не текущий
-                if library.current_colorpicker_instance and library.current_colorpicker_instance ~= cfg then
-                    library.current_colorpicker_instance.open = false
-                    library.current_colorpicker_instance.set_visible(false)
-                end
-                library.current_colorpicker_instance = cfg
-            else
-                if library.current_colorpicker_instance == cfg then
-                    library.current_colorpicker_instance = nil
-                end
-            end
-
             items[ "colorpicker_fade" ].BackgroundTransparency = 0
             items[ "colorpicker_holder" ].Parent = bool and library[ "items" ] or library[ "other" ]
             items[ "colorpicker_holder" ].Position = dim_offset(items[ "colorpicker" ].AbsolutePosition.X, items[ "colorpicker" ].AbsolutePosition.Y + items[ "colorpicker" ].AbsoluteSize.Y + 45)
@@ -2779,23 +2758,15 @@ end
         end
 
         items[ "colorpicker" ].MouseButton1Click:Connect(function()
-            --                                                                     if not cfg.open then
-                library:close_element(cfg)
-            end
+            -- Закрываем любой открытый элемент перед переключением состояния
+            library:close_element(cfg)
             
             cfg.open = not cfg.open 
 
             cfg.set_visible(cfg.open)            
         end)
 
-        -- Добавляем обработчик для закрытия колорпикера при клике вне его области
-        library:connection(uis.InputBegan, function(input, game_event)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 and cfg.open and not library:mouse_in_frame(items["colorpicker_holder"]) and not library:mouse_in_frame(items["colorpicker"]) then
-                cfg.open = false
-                cfg.set_visible(false)
-            end
-        end)
-       uis.InputChanged:Connect(function(input)
+        uis.InputChanged:Connect(function(input)
             if (dragging_sat or dragging_hue or dragging_alpha) and input.UserInputType == Enum.UserInputType.MouseMovement then
                 cfg.update_color() 
             end
