@@ -3184,7 +3184,7 @@ do
                     _G.StopHitboxExpander()
                 end
             end,
-            info = "Увеличивает хитбоксы игроков для упрощения попадания"
+            info = ">_<"
         })
         
         -- HitboxExpander Settings
@@ -3201,7 +3201,7 @@ do
                     _G.hitboxExpanderSettings.size = value
                 end
             end,
-            info = "Размер увеличенного хитбокса (рекомендуется 5-20)"
+            info = ">_<"
         })
         
         hitboxExpanderSettings:toggle({
@@ -3212,7 +3212,7 @@ do
             callback = function(bool)
                 _G.hitboxExpanderSettings.visible = bool
             end,
-            info = "Показывать увеличенные хитбоксы визуально"
+            info = ">_<"
         })
         
         -- NoRecoil Toggle
@@ -3224,7 +3224,7 @@ do
             callback = function(bool)
                 _G.noRecoilSettings.enabled = bool
             end,
-            info = "Убирает отдачу оружия через блокировку CFrame камеры"
+            info = ">_<"
         })
         
         -- NoSpread Toggle
@@ -3236,7 +3236,7 @@ do
             callback = function(bool)
                 _G.noSpreadSettings.enabled = bool
             end,
-            info = "Убирает разброс оружия через хук math.random"
+            info = ">_<"
         })
         
         -- NoSpread Settings
@@ -3253,7 +3253,7 @@ do
             callback = function(value)
                 _G.noSpreadSettings.amount = value
             end,
-            info = "Сила разброса (0% = нет разброса, 100% = полный разброс)"
+            info = ">_<"
         })
     end
 end
@@ -3286,7 +3286,7 @@ do
                     _G.StopSelfMaterial()
                 end
             end,
-            info = "Изменяет материал и цвет вашего персонажа"
+            info = ">_<"
         })
         
         -- SelfMaterial Settings
@@ -3300,7 +3300,7 @@ do
             callback = function(color)
                 _G.selfMaterialSettings.color = color
             end,
-            info = "Цвет персонажа"
+            info = ">_<"
         })
         
         -- SelfHighlight Toggle
@@ -3318,7 +3318,7 @@ do
                     _G.StopSelfHighlight()
                 end
             end,
-            info = "Добавляет подсветку вашему персонажу"
+            info = ">_<"
         })
         
         -- SelfHighlight Settings
@@ -3335,7 +3335,7 @@ do
                 _G.selfHighlightSettings.fillTransparency = 1 - fade
                 _G.UpdateSelfHighlight()
             end,
-            info = "Цвет и прозрачность заливки подсветки"
+            info = ">_<"
         })
         
         -- Outline Color Picker with Fade
@@ -3349,7 +3349,7 @@ do
                 _G.selfHighlightSettings.outlineTransparency = 1 - fade
                 _G.UpdateSelfHighlight()
             end,
-            info = "Цвет и прозрачность контура подсветки"
+            info = ">_<"
         })
         
         -- GunMaterial Toggle
@@ -3367,7 +3367,7 @@ do
                     _G.StopGunMaterial()
                 end
             end,
-            info = "Изменяет материал и цвет оружия в руках"
+            info = ">_<"
         })
         
         -- GunMaterial Settings
@@ -3381,7 +3381,7 @@ do
             callback = function(color)
                 _G.gunMaterialSettings.color = color
             end,
-            info = "Цвет оружия (материал ForceField)"
+            info = ">_<"
         })
         
         -- GunHighlight Toggle
@@ -3399,7 +3399,7 @@ do
                     _G.StopGunHighlight()
                 end
             end,
-            info = "Добавляет подсветку оружию в руках"
+            info = ">_<"
         })
         
         -- GunHighlight Settings
@@ -3416,7 +3416,7 @@ do
                 _G.gunHighlightSettings.fillTransparency = 1 - fade
                 _G.UpdateGunHighlight()
             end,
-            info = "Цвет и прозрачность заливки подсветки оружия"
+            info = ">_<"
         })
         
         -- Outline Color Picker with Fade
@@ -3430,7 +3430,7 @@ do
                 _G.gunHighlightSettings.outlineTransparency = 1 - fade
                 _G.UpdateGunHighlight()
             end,
-            info = "Цвет и прозрачность контура подсветки оружия"
+            info = ">_<"
         })
         
         -- Textures Toggle
@@ -3448,7 +3448,7 @@ do
                     _G.StopTexturesChanger()
                 end
             end,
-            info = "Изменяет материал всех объектов в игре"
+            info = ">_<"
         })
         
         -- Textures Settings
@@ -3469,7 +3469,7 @@ do
                 _G.texturesSettings.selectedMaterial = material
                 _G.UpdateTextures()
             end,
-            info = "Выберите материал для применения ко всем объектам"
+            info = ">_<"
         })
     end
     
@@ -3508,7 +3508,7 @@ do
                     _G.espFramework:checkESPState()
                 end
             end,
-            info = "Показывает рамки вокруг игроков"
+            info = ">_<"
         })
         
         -- Box ESP Settings
@@ -3531,7 +3531,7 @@ do
                     end
                 end
             end,
-            info = "Первый цвет градиента рамки"
+            info = ">_<"
         })
         
         boxESPSettings:colorpicker({
@@ -3547,7 +3547,7 @@ do
                     end
                 end
             end,
-            info = "Второй цвет градиента рамки"
+            info = ">_<"
         })
         
         boxESPSettings:colorpicker({
@@ -3563,7 +3563,7 @@ do
                     end
                 end
             end,
-            info = "Третий цвет градиента рамки"
+            info = ">_<"
         })
         
         boxESPSettings:colorpicker({
@@ -3579,7 +3579,7 @@ do
                     end
                 end
             end,
-            info = "Четвертый цвет градиента рамки"
+            info = ">_<"
         })
         
         -- Gradient Rotation Slider
@@ -3600,7 +3600,7 @@ do
                     end
                 end
             end,
-            info = "Поворот градиента рамки в градусах"
+            info = ">_<"
         })
         
         -- Health Bar ESP Toggle (отдельный от Box ESP)
@@ -3633,7 +3633,7 @@ do
                     _G.espFramework:checkESPState()
                 end
             end,
-            info = "Показывает полоски здоровья игроков"
+            info = ">_<"
         })
         
         -- Health Bar Settings
@@ -3656,7 +3656,7 @@ do
                     end
                 end
             end,
-            info = "Первый цвет градиента здоровья"
+            info = ">_<"
         })
         
         healthBarSettings:colorpicker({
@@ -3672,7 +3672,7 @@ do
                     end
                 end
             end,
-            info = "Второй цвет градиента здоровья"
+            info = ">_<"
         })
         
         healthBarSettings:colorpicker({
@@ -3688,7 +3688,7 @@ do
                     end
                 end
             end,
-            info = "Третий цвет градиента здоровья"
+            info = ">_<"
         })
         
         healthBarSettings:colorpicker({
@@ -3704,7 +3704,7 @@ do
                     end
                 end
             end,
-            info = "Четвертый цвет градиента здоровья"
+            info = ">_<"
         })
         
         -- Health Bar Gradient Rotation Slider
@@ -3725,7 +3725,7 @@ do
                     end
                 end
             end,
-            info = "Поворот градиента здоровья в градусах"
+            info = ">_<"
         })
         
         -- Armor Bar ESP Toggle (отдельный от Health Bar)
@@ -3758,7 +3758,7 @@ do
                     _G.espFramework:checkESPState()
                 end
             end,
-            info = "Показывает полоски брони игроков"
+            info = ">_<"
         })
         
         -- Armor Bar Settings
@@ -3778,7 +3778,7 @@ do
                     end
                 end
             end,
-            info = "Первый цвет градиента брони"
+            info = ">_<"
         })
         
         armorBarSettings:colorpicker({
@@ -3794,7 +3794,7 @@ do
                     end
                 end
             end,
-            info = "Второй цвет градиента брони"
+            info = ">_<"
         })
         
         armorBarSettings:colorpicker({
@@ -3810,7 +3810,7 @@ do
                     end
                 end
             end,
-            info = "Третий цвет градиента брони"
+            info = ">_<"
         })
         
         armorBarSettings:colorpicker({
@@ -3826,7 +3826,7 @@ do
                     end
                 end
             end,
-            info = "Четвертый цвет градиента брони"
+            info = ">_<"
         })
         
         -- Armor Bar Gradient Rotation Slider
@@ -3847,7 +3847,7 @@ do
                     end
                 end
             end,
-            info = "Поворот градиента брони в градусах"
+            info = ">_<"
         })
         
         -- Highlight Chams Toggle
@@ -3872,7 +3872,7 @@ do
                     _G.espFramework:clearAllHighlights()
                 end
             end,
-            info = "Подсвечивает игроков через стены"
+            info = ">_<"
         })
         
         -- Highlight Chams Settings
@@ -3909,7 +3909,7 @@ do
                 if not library.flags["highlight_chams_enabled"] then return end
                 _G.espFramework:updateAllHighlights(library.flags)
             end,
-            info = "Цвет и прозрачность обводки highlight"
+            info = ">_<"
         })
         
         -- Material Chams Toggle
@@ -3930,7 +3930,7 @@ do
                     _G.espFramework:setAllPlayersMaterial("Plastic")
                 end
             end,
-            info = "Меняет материал игроков на светящийся"
+            info = ">_<"
         })
         
         -- Material Chams Settings
@@ -3949,7 +3949,7 @@ do
                 if not library.flags["material_chams_enabled"] then return end
                 _G.espFramework:updateAllMaterialColors(library.flags)
             end,
-            info = "Цвет материала для chams"
+            info = ">_<"
         })
         
     end
@@ -3982,7 +3982,7 @@ do
                     _G.StopAntiStomp()
                 end
             end,
-            info = "Автоматически вызывает смерть при низком HP"
+            info = ">_<"
         })
         
         -- AntiStomp Settings
@@ -3998,7 +3998,7 @@ do
             callback = function(value)
                 _G.antiStompSettings.hpThreshold = value
             end,
-            info = "HP при котором будет вызвана смерть"
+            info = ">_<"
         })
         
         -- VelocityBreaker Toggle
@@ -4015,7 +4015,7 @@ do
                     _G.StopVelocityBreaker()
                 end
             end,
-            info = "Изменяет скорость игрока для анти-эйма"
+            info = ">_<"
         })
         
         -- VelocityBreaker Settings
@@ -4030,7 +4030,7 @@ do
             callback = function(value)
                 _G.velocityBreakerSettings.velocityX = value
             end,
-            info = "Скорость по оси X"
+            info = ">_<"
         })
         
         velocityBreakerSettings:slider({
@@ -4042,7 +4042,7 @@ do
             callback = function(value)
                 _G.velocityBreakerSettings.velocityY = value
             end,
-            info = "Скорость по оси Y"
+            info = ">_<"
         })
         
         velocityBreakerSettings:slider({
@@ -4054,7 +4054,7 @@ do
             callback = function(value)
                 _G.velocityBreakerSettings.velocityZ = value
             end,
-            info = "Скорость по оси Z"
+            info = ">_<"
         })
         
         -- AntiFling Toggle
@@ -4071,7 +4071,7 @@ do
                     _G.StopAntiFling()
                 end
             end,
-            info = "Отключает коллизии других игроков для предотвращения флинга"
+            info = ">_<"
         })
         
         -- AntiInertia Toggle
@@ -4083,7 +4083,7 @@ do
             callback = function(bool)
                 _G.ToggleAntiInertia(bool)
             end,
-            info = "Убирает инерцию движения для более точного контроля"
+            info = ">_<"
         })
         
         -- LagSwitch Toggle
@@ -4100,7 +4100,7 @@ do
                     _G.StopLagSwitch()
                 end
             end,
-            info = "Создает лаг-десинк для анти-эйма через изменение сетевых флагов"
+            info = ">_<"
         })
         
         -- LagSwitch Settings
@@ -4117,7 +4117,7 @@ do
             callback = function(value)
                 _G.lagSwitchSettings.desyncDelay = value
             end,
-            info = "Задержка между циклами десинка (фриз + анфриз + пауза)"
+            info = ">_<"
         })
     end
     
@@ -4169,7 +4169,7 @@ do
             callback = function(value)
                 _G.autoBuySettings.autoArmor.armorValue = value
             end,
-            info = "Значение брони при котором будет покупаться новая броня"
+            info = ">_<"
         })
         
         -- AutoGuns Toggle
@@ -4219,7 +4219,7 @@ do
                     end
                 end
             end,
-            info = "Выберите оружие для автопокупки (можно несколько)"
+            info = ">_<"
         })
         
         -- AutoAmmo Toggle
@@ -4266,7 +4266,7 @@ do
                     _G.StopSpeedHack()
                 end
             end,
-            info = "Увеличивает скорость передвижения через CFrame"
+            info = ">_<"
         })
         
         -- SpeedHack Settings
@@ -4283,7 +4283,7 @@ do
                     _G.speedHackSettings.speed = value
                 end
             end,
-            info = "Значение скорости (рекомендуется 1-5)"
+            info = ">_<"
         })
         
         speedHackSettings:keybind({
@@ -4302,7 +4302,7 @@ do
                     _G.StopSpeedHack()
                 end
             end,
-            info = "Клавиша для переключения SpeedHack"
+            info = ">_<"
         })
         
         -- FlyHack Toggle
@@ -4319,7 +4319,7 @@ do
                     _G.StopFlyHack()
                 end
             end,
-            info = "Позволяет летать с помощью CFrame (Space - вверх, Shift - вниз)"
+            info = ">_<"
         })
         
         -- FlyHack Settings
@@ -4336,7 +4336,7 @@ do
                     _G.flyHackSettings.speed = value
                 end
             end,
-            info = "Скорость полета (рекомендуется 30-100)"
+            info = ">_<"
         })
         
         flyHackSettings:keybind({
@@ -4355,7 +4355,7 @@ do
                     _G.StopFlyHack()
                 end
             end,
-            info = "Клавиша для переключения FlyHack"
+            info = ">_<"
         })
         
         -- NoJumpCooldown Toggle
@@ -4367,7 +4367,7 @@ do
             callback = function(bool)
                 _G.noJumpCooldownSettings.enabled = bool
             end,
-            info = "Убирает кулдаун прыжка через хук __newindex"
+            info = ">_<"
         })
     end
 end
@@ -4398,7 +4398,7 @@ do
             callback = function(bool) 
                 window.toggle_menu(bool) 
             end,
-            info = "Клавиша для открытия/закрытия меню"
+            info = ">_<"
         })
         
         -- Game Interaction Buttons
@@ -4412,7 +4412,7 @@ do
                     lifetime = 3
                 })
             end,
-            info = "Copy current server JobId to clipboard"
+            info = ">_<"
         })
         
         section:button({
@@ -4425,7 +4425,7 @@ do
                     lifetime = 3
                 })
             end,
-            info = "Copy current game ID to clipboard"
+            info = ">_<"
         })
         
         section:button({
@@ -4441,7 +4441,7 @@ do
                     lifetime = 3
                 })
             end,
-            info = "Copy teleport script to join this server"
+            info = ">_<"
         })
         
         section:button({
@@ -4449,7 +4449,7 @@ do
             callback = function()
                 game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId, lp)
             end,
-            info = "Rejoin current server"
+            info = ">_<"
         })
         
         section:button({
@@ -4480,7 +4480,7 @@ do
                     })
                 end
             end,
-            info = "Join a random server within player count range"
+            info = ">_<"
         })
         
         section:slider({
@@ -4490,7 +4490,7 @@ do
             max = 40, 
             default = 1, 
             interval = 1,
-            info = "Minimum number of players required on server"
+            info = ">_<"
         })
         
         section:slider({
@@ -4500,7 +4500,7 @@ do
             max = 40, 
             default = 15, 
             interval = 1,
-            info = "Maximum number of players allowed on server"
+            info = ">_<"
         })
         
         -- Notification Test Button
