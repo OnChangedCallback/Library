@@ -75,7 +75,7 @@ local udim2_new = UDim2.new
 local udim2_offset = UDim2.fromOffset
 
 -- // Library
-local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/OnChangedCallback/Library/refs/heads/main/v5"))()
+local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/OnChangedCallback/Library/refs/heads/main/LastOne"))()
 
 -- // FFlags Normalization
 do
@@ -1669,7 +1669,7 @@ do
                         originalColors[partKey] = part.Color
                     end
                     
-                    part.Material = Enum.Material.Neon
+                    part.Material = enum.Material.Neon
                     part.Color = materialColor
                     -- Убираем текстуры для MeshPart
                     if part:IsA("MeshPart") then
@@ -1677,7 +1677,7 @@ do
                     end
                 else
                     -- Восстанавливаем оригинальный цвет
-                    part.Material = Enum.Material.Plastic
+                    part.Material = enum.Material.Plastic
                     if originalColors[partKey] then
                         part.Color = originalColors[partKey]
                     end
@@ -2210,6 +2210,104 @@ do
     _G.StartGunHighlight = StartGunHighlight
     _G.StopGunHighlight = StopGunHighlight
     _G.UpdateGunHighlight = UpdateGunHighlight
+end
+
+-- // TexturesChanger Module
+do
+    local texturesSettings = {
+        enabled = false,
+        selectedMaterial = "Plastic"
+    }
+    
+    local originals = {}
+    local texturesConnection = nil
+    
+    -- Список доступных материалов (только существующие в Roblox)
+    local AVAILABLE_MATERIALS = {
+        "Plastic", "Wood", "Slate", "Concrete", "CorrodedMetal",
+        "DiamondPlate", "Foil", "Grass", "Ice", "Marble",
+        "Granite", "Brick", "Pebble", "Sand", "Fabric",
+        "SmoothPlastic", "Metal", "Neon", "Glass", "ForceField"
+    }
+    
+    local function ApplyTextures()
+        if not texturesSettings.enabled then return end
+        
+        -- Получаем материал один раз
+        local selectedMaterial = texturesSettings.selectedMaterial
+        local success, materialEnum = pcall(function()
+            return enum.Material[selectedMaterial]
+        end)
+        local targetMaterial = (success and materialEnum) and materialEnum or enum.Material.Plastic
+        
+        -- Применяем к объектам более эффективно
+        local function processContainer(container)
+            for _, obj in ipairs(container:GetChildren()) do
+                if obj:IsA("BasePart") then
+                    if originals[obj] == nil then
+                        originals[obj] = obj.Material
+                    end
+                    obj.Material = targetMaterial
+                elseif obj:IsA("Model") or obj:IsA("Folder") then
+                    processContainer(obj)
+                end
+            end
+        end
+        
+        processContainer(ws)
+    end
+    
+    local function StartTexturesChanger()
+        if texturesConnection then
+            texturesConnection:Disconnect()
+            texturesConnection = nil
+        end
+        
+        -- Применяем материалы сразу при включении
+        ApplyTextures()
+        
+        -- Следим за новыми объектами
+        texturesConnection = ws.DescendantAdded:Connect(function(obj)
+            if texturesSettings.enabled and obj:IsA("BasePart") then
+                if originals[obj] == nil then
+                    originals[obj] = obj.Material
+                end
+                local selectedMaterial = texturesSettings.selectedMaterial
+                local success, materialEnum = pcall(function()
+                    return enum.Material[selectedMaterial]
+                end)
+                local targetMaterial = (success and materialEnum) and materialEnum or enum.Material.Plastic
+                obj.Material = targetMaterial
+            end
+        end)
+    end
+    
+    local function StopTexturesChanger()
+        if texturesConnection then
+            texturesConnection:Disconnect()
+            texturesConnection = nil
+        end
+        
+        -- Восстанавливаем оригинальные материалы
+        for obj, originalMaterial in pairs(originals) do
+            if obj and obj.Parent then
+                obj.Material = originalMaterial
+            end
+        end
+        originals = {}
+    end
+    
+    local function UpdateTextures()
+        if texturesSettings.enabled then
+            ApplyTextures()
+        end
+    end
+    
+    _G.texturesSettings = texturesSettings
+    _G.AVAILABLE_MATERIALS = AVAILABLE_MATERIALS
+    _G.StartTexturesChanger = StartTexturesChanger
+    _G.StopTexturesChanger = StopTexturesChanger
+    _G.UpdateTextures = UpdateTextures
 end
 
 -- // Window
@@ -3333,6 +3431,45 @@ do
                 _G.UpdateGunHighlight()
             end,
             info = "Цвет и прозрачность контура подсветки оружия"
+        })
+        
+        -- Textures Toggle
+        local texturesToggle = section:toggle({
+            name = "Textures",
+            flag = "textures_enabled",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.texturesSettings.enabled = bool
+                
+                if bool then
+                    _G.StartTexturesChanger()
+                else
+                    _G.StopTexturesChanger()
+                end
+            end,
+            info = "Изменяет материал всех объектов в игре"
+        })
+        
+        -- Textures Settings
+        local texturesSettings = texturesToggle:settings({})
+        
+        -- Material Dropdown
+        texturesSettings:dropdown({
+            name = "Material",
+            flag = "textures_material",
+            items = {
+                "Plastic", "Wood", "Slate", "Concrete", "CorrodedMetal",
+                "DiamondPlate", "Foil", "Grass", "Ice", "Marble",
+                "Granite", "Brick", "Pebble", "Sand", "Fabric",
+                "SmoothPlastic", "Metal", "Neon", "Glass", "ForceField"
+            },
+            default = "Plastic",
+            callback = function(material)
+                _G.texturesSettings.selectedMaterial = material
+                _G.UpdateTextures()
+            end,
+            info = "Выберите материал для применения ко всем объектам"
         })
     end
     
