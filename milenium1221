@@ -1319,21 +1319,24 @@ do
         local sizeY = 6
         local sizeZ = 1.5
         
-        -- // 6 corners calculation (оптимизировано)
-        local corners = {
-            camera:WorldToViewportPoint((hrp.CFrame * cfr(-sizeX/2, -sizeY/2, 0)).Position),
-            camera:WorldToViewportPoint((hrp.CFrame * cfr(sizeX/2, -sizeY/2, 0)).Position),
-            camera:WorldToViewportPoint((hrp.CFrame * cfr(-sizeX/2, sizeY/2, 0)).Position),
-            camera:WorldToViewportPoint((hrp.CFrame * cfr(sizeX/2, sizeY/2, 0)).Position),
-            camera:WorldToViewportPoint((hrp.CFrame * cfr(0, -sizeY/2, sizeZ/2)).Position),
-            camera:WorldToViewportPoint((hrp.CFrame * cfr(0, sizeY/2, sizeZ/2)).Position)
-        }
+        -- // 8 corners calculation (улучшенный расчет для точного размера)
+        local corners = {}
+        -- Передние углы (Z = sizeZ/2)
+        corners[1] = camera:WorldToViewportPoint((hrp.CFrame * cfr(-sizeX/2, -sizeY/2, sizeZ/2)).Position)
+        corners[2] = camera:WorldToViewportPoint((hrp.CFrame * cfr(sizeX/2, -sizeY/2, sizeZ/2)).Position)
+        corners[3] = camera:WorldToViewportPoint((hrp.CFrame * cfr(-sizeX/2, sizeY/2, sizeZ/2)).Position)
+        corners[4] = camera:WorldToViewportPoint((hrp.CFrame * cfr(sizeX/2, sizeY/2, sizeZ/2)).Position)
+        -- Задние углы (Z = -sizeZ/2)
+        corners[5] = camera:WorldToViewportPoint((hrp.CFrame * cfr(-sizeX/2, -sizeY/2, -sizeZ/2)).Position)
+        corners[6] = camera:WorldToViewportPoint((hrp.CFrame * cfr(sizeX/2, -sizeY/2, -sizeZ/2)).Position)
+        corners[7] = camera:WorldToViewportPoint((hrp.CFrame * cfr(-sizeX/2, sizeY/2, -sizeZ/2)).Position)
+        corners[8] = camera:WorldToViewportPoint((hrp.CFrame * cfr(sizeX/2, sizeY/2, -sizeZ/2)).Position)
         
         -- // min/max coordinates
         local minX, minY = math.huge, math.huge
         local maxX, maxY = -math.huge, -math.huge
         
-        for i = 1, 6 do
+        for i = 1, 8 do
             local corner = corners[i]
             minX = min(minX, corner.X)
             minY = min(minY, corner.Y)
@@ -1829,7 +1832,7 @@ do
         originalClothing = {}
     end
     
-    -- // Player Events для Highlight и Material Chams
+    -- // Player Events для Highlight, Material Chams и ESP
     players.PlayerAdded:Connect(function(player)
         if player ~= lp then
             player.CharacterAdded:Connect(function(character)
@@ -1840,6 +1843,17 @@ do
                 if library.flags["material_chams_enabled"] then
                     espFramework:setPlayerMaterial(player, "Neon")
                 end
+                -- Добавляем ESP для нового игрока если ESP включен
+                if espFramework:shouldESPRun() then
+                    local espData = espFramework:getESP(player)
+                    if not espData then
+                        espData = espFramework:createBox(player)
+                        if espData then
+                            espFramework:setESP(player, espData)
+                            espFramework:applySettings(espData, library.flags)
+                        end
+                    end
+                end
             end)
         end
     end)
@@ -1847,6 +1861,8 @@ do
     players.PlayerRemoving:Connect(function(player)
         if player ~= lp then
             espFramework:removeHighlight(player)
+            -- Удаляем ESP данные игрока
+            espFramework:removeBox(player)
             -- Очищаем сохраненные цвета и одежду игрока
             for key, _ in pairs(originalColors) do
                 if key:find(player.Name .. "_") == 1 then
@@ -1873,6 +1889,17 @@ do
                 if library.flags["material_chams_enabled"] then
                     espFramework:setPlayerMaterial(player, "Neon")
                 end
+                -- Добавляем ESP для нового персонажа если ESP включен
+                if espFramework:shouldESPRun() then
+                    local espData = espFramework:getESP(player)
+                    if not espData then
+                        espData = espFramework:createBox(player)
+                        if espData then
+                            espFramework:setESP(player, espData)
+                            espFramework:applySettings(espData, library.flags)
+                        end
+                    end
+                end
             end)
             
             -- Обрабатываем уже существующих персонажей
@@ -1884,6 +1911,17 @@ do
                     end
                     if library.flags["material_chams_enabled"] then
                         espFramework:setPlayerMaterial(player, "Neon")
+                    end
+                    -- Добавляем ESP для существующего персонажа если ESP включен
+                    if espFramework:shouldESPRun() then
+                        local espData = espFramework:getESP(player)
+                        if not espData then
+                            espData = espFramework:createBox(player)
+                            if espData then
+                                espFramework:setESP(player, espData)
+                                espFramework:applySettings(espData, library.flags)
+                            end
+                        end
                     end
                 end)
             end
