@@ -494,11 +494,14 @@ do
         csyncStrengthX = 15,
         csyncStrengthY = 15,
         csyncStrengthZ = 15,
+        csyncMovedirectionPred = false,
+        csyncPredMultiplier = 2.0,
         -- View Target settings
         viewTargetEnabled = false,
         -- Void settings
         voidOnNotAvailable = false,
         voidAutoReload = false,
+        voidAutoReloadAmmo = 0,
         -- AutoShoot settings
         autoShootEnabled = false
     }
@@ -755,14 +758,9 @@ do
                     end
                     
                     if targetUnavailable then
-                        -- Void mode - перемещаем в невозможные координаты
+                        -- Void mode - перемещаем в невозможные координаты с движением
                         _G.autoBuyInProgress = true -- Блокируем AutoBuy во время voiding
-                        local voidPosition = vec3(
-                            random(-80000, 80000),
-                            -math.huge, -- -inf по Y оси
-                            random(-80000, 80000)
-                        )
-                        myHRP.CFrame = CFrame.new(voidPosition)
+                        _G.startVoidMovement()
                         
                         -- Определяем причину void'а для уведомления
                         local localTool = lp.Character and lp.Character:FindFirstChildOfClass("Tool")
@@ -782,8 +780,25 @@ do
                         
                         _G.autoBuyInProgress = false
                     elseif targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
+                        -- Останавливаем движение в void если цель снова доступна
+                        _G.stopVoidMovement()
                         -- Обычный Csync режим
                         local targetHead = targetPlayer.Character.Head
+                        local targetPosition = targetHead.Position
+                        
+                        -- MovedirectionPred логика (только для Offensive режима)
+                        if rageBotSettings.csyncMode == "Offensive" and rageBotSettings.csyncMovedirectionPred then
+                            local targetHumanoid = targetPlayer.Character:FindFirstChild("Humanoid")
+                            if targetHumanoid then
+                                local moveDirection = targetHumanoid.MoveDirection
+                                if moveDirection.Magnitude > 0 then
+                                    -- Предикция на основе MoveDirection
+                                    local predictionStrength = rageBotSettings.csyncPredMultiplier * 0.1 -- Конвертируем мультиплер
+                                    local predictedOffset = moveDirection * predictionStrength * 16 -- 16 - базовая скорость
+                                    targetPosition = targetPosition + predictedOffset
+                                end
+                            end
+                        end
                     
                     if rageBotSettings.csyncMode == "Offensive" then
                         -- Offensive mode - случайные смещения
@@ -794,13 +809,13 @@ do
                         )
                         
                         myHRP.CFrame = CFrame.lookAt(
-                            targetHead.Position + randomOffset,
-                            targetHead.Position
+                            targetPosition + randomOffset,
+                            targetPosition
                         )
                         
                     elseif rageBotSettings.csyncMode == "Defensive" then
                         -- Defensive mode - смещаем ось от цели, потом случайные смещения от новой оси
-                        local targetPos = targetHead.Position
+                        local targetPos = targetPosition
                         
                         -- Создаем новую ось (центр) смещенную от цели
                         local newAxis = targetPos + vec3(
@@ -839,12 +854,8 @@ do
                 
                 -- Проверяем наличие оружия для VoidOnNotAvailable (приостанавливаем во время AutoBuy)
                 if not tool and rageBotSettings.voidOnNotAvailable and humanoidRootPart and not (_G.autoBuyInProgress or false) then
-                    -- VoidOnNotAvailable - телепортируемся в пустоту если нет оружия
-                    humanoidRootPart.CFrame = humanoidRootPart.CFrame + vec3(
-                        random(-80000, 80000), 
-                        random(0, 80000), 
-                        random(-80000, 80000)
-                    )
+                    -- VoidOnNotAvailable - начинаем движение в пустоте если нет оружия
+                    _G.startVoidMovement()
                     -- Убираем уведомление для экономии места
                     return
                 end
@@ -872,34 +883,24 @@ do
                     
                     if not isKnocked and not isDead then
                         if not hasForceField or tool.Name == "[Rifle]" then
+                            -- Останавливаем движение в void если можем стрелять
+                            _G.stopVoidMovement()
                             -- Стреляем по цели (без позиционирования - за это отвечает Csync)
                             MainEvent:FireServer("ShootGun", toolHandle, toolHandle.Position, targetHead.Position, targetHead, vec3(0, 1, 0))
                         elseif hasForceField and rageBotSettings.voidOnNotAvailable and not (_G.autoBuyInProgress or false) then
-                            -- VoidOnNotAvailable - телепортируемся в пустоту при форсфилде
-                            humanoidRootPart.CFrame = humanoidRootPart.CFrame + vec3(
-                                random(-80000, 80000), 
-                                random(0, 80000), 
-                                random(-80000, 80000)
-                            )
+                            -- VoidOnNotAvailable - начинаем движение в пустоте при форсфилде
+                            _G.startVoidMovement()
                             -- Убираем уведомление для экономии места
                             MainEvent:FireServer("Reload", tool)
                         end
                     elseif isDead and rageBotSettings.voidOnNotAvailable and not (_G.autoBuyInProgress or false) then
-                        -- VoidOnNotAvailable - телепортируемся в пустоту при окончательной смерти
-                        humanoidRootPart.CFrame = humanoidRootPart.CFrame + vec3(
-                            random(-80000, 80000), 
-                            random(0, 80000), 
-                            random(-80000, 80000)
-                        )
+                        -- VoidOnNotAvailable - начинаем движение в пустоте при окончательной смерти
+                        _G.startVoidMovement()
                         -- Убираем уведомление для экономии места
                         MainEvent:FireServer("Reload", tool)
                     elseif isKnocked and rageBotSettings.voidOnNotAvailable and not (_G.autoBuyInProgress or false) then
-                        -- VoidOnNotAvailable - телепортируемся в пустоту при нокауте
-                        humanoidRootPart.CFrame = humanoidRootPart.CFrame + vec3(
-                            random(-80000, 80000), 
-                            random(0, 80000), 
-                            random(-80000, 80000)
-                        )
+                        -- VoidOnNotAvailable - начинаем движение в пустоте при нокауте
+                        _G.startVoidMovement()
                         -- Убираем уведомление для экономии места
                         MainEvent:FireServer("Reload", tool)
                     end
@@ -929,6 +930,55 @@ do
     _G.updateRagePlayerList = updatePlayerList
 end
 
+-- // VoidMovement Module
+do
+    local voidMovementConnection = nil
+    local isInVoid = false
+    local voidStartTime = 0
+    
+    local function startVoidMovement()
+        if voidMovementConnection then
+            voidMovementConnection:Disconnect()
+            voidMovementConnection = nil
+        end
+        
+        isInVoid = true
+        voidStartTime = tick()
+        
+        voidMovementConnection = rs.Heartbeat:Connect(function()
+            if not isInVoid then return end
+            
+            -- Проверяем каждые 0.1 секунды
+            if tick() - voidStartTime >= 0.1 then
+                voidStartTime = tick()
+                
+                if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+                    local humanoidRootPart = lp.Character.HumanoidRootPart
+                    
+                    -- Генерируем новую случайную позицию в void
+                    humanoidRootPart.CFrame = cfr(
+                        random(-80000, 80000),
+                        random(50000, 80000),
+                        random(-80000, 80000)
+                    )
+                end
+            end
+        end)
+    end
+    
+    local function stopVoidMovement()
+        if voidMovementConnection then
+            voidMovementConnection:Disconnect()
+            voidMovementConnection = nil
+        end
+        isInVoid = false
+    end
+    
+    -- Экспортируем функции для использования в других модулях
+    _G.startVoidMovement = startVoidMovement
+    _G.stopVoidMovement = stopVoidMovement
+end
+
 -- // VoidAutoReload Module
 do
     local voidAutoReloadConnection = nil
@@ -949,7 +999,7 @@ do
             if not tool then return end
             
             local ammo = tool:FindFirstChild("Ammo")
-            if not ammo or ammo.Value > 0 then return end
+            if not ammo or ammo.Value > rageBotSettings.voidAutoReloadAmmo then return end
             
             -- Если патроны закончились - телепортируемся в void и перезаряжаемся
             local humanoidRootPart = lp.Character:FindFirstChild("HumanoidRootPart")
@@ -958,12 +1008,8 @@ do
             -- Сохраняем оригинальную позицию
             local originalCFrame = humanoidRootPart.CFrame
             
-            -- Телепортируемся в void
-            humanoidRootPart.CFrame = cfr(
-                random(-80000, 80000), 
-                random(50000, 80000), 
-                random(-80000, 80000)
-            )
+            -- Начинаем движение в void
+            _G.startVoidMovement()
             
             -- Перезаряжаемся сразу
             MainEvent:FireServer("Reload", tool)
@@ -971,7 +1017,8 @@ do
             -- Ждем немного для завершения перезарядки
             task.wait(0.2)
             
-            -- Возвращаемся на оригинальную позицию если персонаж жив
+            -- Останавливаем движение в void и возвращаемся
+            _G.stopVoidMovement()
             if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
                 lp.Character.HumanoidRootPart.CFrame = originalCFrame
             end
@@ -3910,6 +3957,32 @@ do
             info = "Переключает камеру на выбранную цель"
         })
         
+        -- MovedirectionPred Toggle
+        csyncSettings:toggle({
+            name = "MovedirectionPred",
+            flag = "rage_csync_movedirection_pred",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.rageBotSettings.csyncMovedirectionPred = bool
+            end,
+            info = "Предикция движения цели (только Offensive режим)"
+        })
+        
+        -- Prediction Multiplier Slider
+        csyncSettings:slider({
+            name = "Pred Multiplier",
+            flag = "rage_csync_pred_multiplier",
+            min = 1.0,
+            max = 100.0,
+            default = 2.0,
+            interval = 0.1,
+            callback = function(value)
+                _G.rageBotSettings.csyncPredMultiplier = value
+            end,
+            info = "Мультиплер предикции движения (1.0 = слабо, 100.0 = очень сильно)"
+        })
+        
         -- VoidOnNotAvailable Toggle
         section:toggle({
             name = "VoidOnNotAvailable",
@@ -3923,7 +3996,7 @@ do
         })
         
         -- VoidAutoReload Toggle
-        section:toggle({
+        local voidAutoReloadToggle = section:toggle({
             name = "VoidAutoReload",
             flag = "rage_void_auto_reload",
             type = "toggle",
@@ -3931,7 +4004,23 @@ do
             callback = function(bool)
                 _G.rageBotSettings.voidAutoReload = bool
             end,
-            info = "Автоперезарядка в void при нулевых патронах"
+            info = "Автоперезарядка в void при низких патронах"
+        })
+        
+        -- VoidAutoReload Settings
+        local voidAutoReloadSettings = voidAutoReloadToggle:settings({})
+        
+        voidAutoReloadSettings:slider({
+            name = "Ammo Threshold",
+            flag = "rage_void_auto_reload_ammo",
+            min = 0,
+            max = 3,
+            default = 0,
+            interval = 1,
+            callback = function(value)
+                _G.rageBotSettings.voidAutoReloadAmmo = value
+            end,
+            info = "Количество патрон при котором перезаряжать (0 = только при нуле)"
         })
         
         -- AutoShoot Toggle
