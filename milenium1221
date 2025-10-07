@@ -1,4 +1,18 @@
--- // Variables
+do
+    local SkyHeightFPS = game.Workspace.FallenPartsDestroyHeight
+    print(SkyHeightFPS)
+    
+    local function antiVOIDfunc()
+        -- Более надежная проверка
+        if SkyHeightFPS ~= 0/0 then
+            game.Workspace.FallenPartsDestroyHeight = 0/0
+        end
+    end
+    
+    -- Вызов функции
+    antiVOIDfunc()
+end
+
 local uis = game:GetService("UserInputService")
 local players = game:GetService("Players")
 local ws = game:GetService("Workspace")
@@ -27,16 +41,23 @@ local dim_offset = UDim2.fromOffset
 local color = Color3.new
 local rgb = Color3.fromRGB
 local hex = Color3.fromHex
-local hsv = Color3.fromHSV
 local rgbseq = ColorSequence.new
 local rgbkey = ColorSequenceKeypoint.new
 local numseq = NumberSequence.new
 local numkey = NumberSequenceKeypoint.new
 
 local camera = ws.CurrentCamera
-local lp = players.LocalPlayer 
+-- // Variables
+local lp = players.LocalPlayer
+local task = task or {
+    wait = wait,
+    spawn = spawn or coroutine.wrap
+} 
 local mouse = lp:GetMouse() 
 local gui_offset = gui_service:GetGuiInset().Y
+
+-- MainEvent для стрельбы
+local MainEvent = rs:WaitForChild("MainEvent")
 
 local max = math.max 
 local floor = math.floor 
@@ -311,15 +332,16 @@ do
     
     -- Auto buy functions
     local function AutoArmor()
-        if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
-            local Armor = lp.DataFolder.Information.Armor
-            if Armor.Value < autoBuySettings.autoArmor.armorValue and lp.DataFolder.currency.Value >= ARMOR_PRICE then
+        if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") and lp.Character:FindFirstChild("BodyEffects") then
+            local Armor = lp.Character.BodyEffects.Armor
+            if Armor.Value <= autoBuySettings.autoArmor.armorValue and lp.DataFolder.Currency.Value >= ARMOR_PRICE then
                 _G.autoBuyInProgress = true -- Блокируем Csync
                 local Origin = lp.Character.HumanoidRootPart.CFrame
-                lp.Character.HumanoidRootPart.CFrame = ARMOR_SHOP.CFrame
                 repeat
+                    task_wait()
+                    lp.Character.HumanoidRootPart.CFrame = ARMOR_SHOP.Head.CFrame
                     fireclickdetector(ARMOR_SHOP.ClickDetector)
-                until Armor.Value >= 130 or lp.DataFolder.currency.Value < ARMOR_PRICE
+                until Armor.Value >= 130 or lp.DataFolder.Currency.Value < ARMOR_PRICE
                 lp.Character.HumanoidRootPart.CFrame = Origin
                 _G.autoBuyInProgress = false -- Разблокируем Csync
             end
@@ -475,7 +497,10 @@ do
         -- View Target settings
         viewTargetEnabled = false,
         -- Void settings
-        voidOnNotAvailable = false
+        voidOnNotAvailable = false,
+        voidAutoReload = false,
+        -- AutoShoot settings
+        autoShootEnabled = false
     }
     
     local updateConnection = nil
@@ -599,8 +624,7 @@ do
         end
         
         indicateConnection = run.Heartbeat:Connect(function()
-            local target = getTarget()
-            local targetPlayer = target and players:FindFirstChild(target.Name)
+            local targetPlayer = getTarget()
             
             -- View Target Logic (работает независимо от индикаторов)
             if rageBotSettings.viewTargetEnabled then
@@ -611,9 +635,10 @@ do
                     end
                 else
                     -- Нет цели - возвращаем камеру на локального игрока
-                    if lp.Character and lp.Character:FindFirstChild("Humanoid") then
-                        if camera.CameraSubject ~= lp.Character.Humanoid then
-                            camera.CameraSubject = lp.Character.Humanoid
+                    if lp.Character then
+                        local humanoid = lp.Character:FindFirstChild("Humanoid")
+                        if humanoid and camera.CameraSubject ~= humanoid then
+                            camera.CameraSubject = humanoid
                         end
                     end
                 end
@@ -623,16 +648,12 @@ do
             if not rageBotSettings.indicateEnabled then
                 indicateFrame.Visible = false
             else
-                if not target or not target.Parent then
+                if not targetPlayer or not targetPlayer.Character then
                     indicateFrame.Visible = false
                 else
                     local mousePos = uis:GetMouseLocation()
                     local offsetX = 15
                     local offsetY = 15
-                    
-                    if not targetPlayer or not targetPlayer.Character then
-                        indicateFrame.Visible = false
-                    else
             
             -- Позиционируем фрейм рядом с курсором
             indicateFrame.Position = dim2(0, mousePos.X + offsetX, 0, mousePos.Y + offsetY)
@@ -680,7 +701,7 @@ do
                 elseif hasForceField then
                     stateText = "SpawnProtected"
                     stateColor = rgb(0, 100, 255) -- синий
-                elseif bodyEffects and bodyEffects:FindFirstChild("K.O") and bodyEffects.K.O.Value then
+                elseif bodyEffects and bodyEffects:FindFirstChild("K.O") and bodyEffects["K.O"].Value then
                     stateText = "Knocked"
                     stateColor = rgb(255, 100, 100) -- светло-красный
                 end
@@ -697,7 +718,6 @@ do
             
                         -- Показываем фрейм только если есть видимые элементы
                         indicateFrame.Visible = hasVisibleElements
-                    end
                 end
             end
             
@@ -708,11 +728,30 @@ do
                     
                     -- Проверяем доступность цели для VoidOnNotAvailable
                     local targetUnavailable = false
-                    if rageBotSettings.voidOnNotAvailable and targetPlayer and targetPlayer.Character then
-                        local bodyEffects = targetPlayer.Character:FindFirstChild("BodyEffects")
-                        local isDead = bodyEffects and bodyEffects:FindFirstChild("SDeath") and bodyEffects.SDeath.Value
-                        local hasForceField = targetPlayer.Character:FindFirstChild("ForceField")
-                        targetUnavailable = isDead or hasForceField
+                    if rageBotSettings.voidOnNotAvailable and not (_G.autoBuyInProgress or false) then
+                        -- Проверяем наличие оружия у локального игрока
+                        local localTool = lp.Character and lp.Character:FindFirstChildOfClass("Tool")
+                        if not localTool then
+                            targetUnavailable = true
+                        elseif targetPlayer and targetPlayer.Character then
+                            -- Проверяем состояние цели
+                            local bodyEffects = targetPlayer.Character:FindFirstChild("BodyEffects")
+                            local humanoid = targetPlayer.Character:FindFirstChild("Humanoid")
+                            
+                            local isDead = bodyEffects and bodyEffects:FindFirstChild("SDeath") and bodyEffects.SDeath.Value == true
+                            local hasForceField = targetPlayer.Character:FindFirstChild("ForceField")
+                            
+                            -- Улучшенная проверка knocked состояния
+                            local isKnocked = false
+                            if bodyEffects and bodyEffects:FindFirstChild("K.O") then
+                                isKnocked = bodyEffects["K.O"].Value == true
+                            end
+                            if humanoid and humanoid.Health <= 0 then
+                                isKnocked = true
+                            end
+                            
+                            targetUnavailable = isDead or hasForceField or isKnocked
+                        end
                     end
                     
                     if targetUnavailable then
@@ -724,6 +763,23 @@ do
                             random(-80000, 80000)
                         )
                         myHRP.CFrame = CFrame.new(voidPosition)
+                        
+                        -- Определяем причину void'а для уведомления
+                        local localTool = lp.Character and lp.Character:FindFirstChildOfClass("Tool")
+                        if not localTool then
+                            -- Убираем уведомление для экономии места
+                        elseif targetPlayer and targetPlayer.Character then
+                            local bodyEffects = targetPlayer.Character:FindFirstChild("BodyEffects")
+                            local humanoid = targetPlayer.Character:FindFirstChild("Humanoid")
+                            local hasForceField = targetPlayer.Character:FindFirstChild("ForceField")
+                            local isDead = bodyEffects and bodyEffects:FindFirstChild("SDeath") and bodyEffects.SDeath.Value == true
+                            
+                            -- Убираем уведомления для экономии места
+                            -- if hasForceField then -> spawn protection
+                            -- elseif isDead then -> permanently dead  
+                            -- else -> knocked out
+                        end
+                        
                         _G.autoBuyInProgress = false
                     elseif targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
                         -- Обычный Csync режим
@@ -769,6 +825,86 @@ do
                     end
                 end
             end
+            
+            -- AutoShoot Logic
+            if rageBotSettings.autoShootEnabled and targetPlayer and targetPlayer.Character then
+                local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+                local targetHead = targetPlayer.Character:FindFirstChild("Head")
+                local humanoidRootPart = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+                local head = lp.Character and lp.Character:FindFirstChild("Head")
+                
+                -- Получаем текущее оружие
+                local tool = lp.Character and lp.Character:FindFirstChildOfClass("Tool")
+                local toolHandle = tool and tool:FindFirstChild("Handle")
+                
+                -- Проверяем наличие оружия для VoidOnNotAvailable (приостанавливаем во время AutoBuy)
+                if not tool and rageBotSettings.voidOnNotAvailable and humanoidRootPart and not (_G.autoBuyInProgress or false) then
+                    -- VoidOnNotAvailable - телепортируемся в пустоту если нет оружия
+                    humanoidRootPart.CFrame = humanoidRootPart.CFrame + vec3(
+                        random(-80000, 80000), 
+                        random(0, 80000), 
+                        random(-80000, 80000)
+                    )
+                    -- Убираем уведомление для экономии места
+                    return
+                end
+                
+                if humanoidRootPart and head and toolHandle and targetHRP and targetHead then
+                    -- Проверяем состояние цели (улучшенная проверка)
+                    local bodyEffects = targetPlayer.Character:FindFirstChild("BodyEffects")
+                    local humanoid = targetPlayer.Character:FindFirstChild("Humanoid")
+                    
+                    -- Более точная проверка knocked состояния
+                    local isKnocked = false
+                    if bodyEffects and bodyEffects:FindFirstChild("K.O") then
+                        isKnocked = bodyEffects["K.O"].Value == true
+                    end
+                    
+                    -- Дополнительная проверка через Humanoid.Health
+                    if humanoid and humanoid.Health <= 0 then
+                        isKnocked = true
+                    end
+                    
+                    local hasForceField = targetPlayer.Character:FindFirstChild("ForceField")
+                    
+                    -- Проверяем окончательную смерть
+                    local isDead = bodyEffects and bodyEffects:FindFirstChild("SDeath") and bodyEffects.SDeath.Value == true
+                    
+                    if not isKnocked and not isDead then
+                        if not hasForceField or tool.Name == "[Rifle]" then
+                            -- Стреляем по цели (без позиционирования - за это отвечает Csync)
+                            MainEvent:FireServer("ShootGun", toolHandle, toolHandle.Position, targetHead.Position, targetHead, vec3(0, 1, 0))
+                        elseif hasForceField and rageBotSettings.voidOnNotAvailable and not (_G.autoBuyInProgress or false) then
+                            -- VoidOnNotAvailable - телепортируемся в пустоту при форсфилде
+                            humanoidRootPart.CFrame = humanoidRootPart.CFrame + vec3(
+                                random(-80000, 80000), 
+                                random(0, 80000), 
+                                random(-80000, 80000)
+                            )
+                            -- Убираем уведомление для экономии места
+                            MainEvent:FireServer("Reload", tool)
+                        end
+                    elseif isDead and rageBotSettings.voidOnNotAvailable and not (_G.autoBuyInProgress or false) then
+                        -- VoidOnNotAvailable - телепортируемся в пустоту при окончательной смерти
+                        humanoidRootPart.CFrame = humanoidRootPart.CFrame + vec3(
+                            random(-80000, 80000), 
+                            random(0, 80000), 
+                            random(-80000, 80000)
+                        )
+                        -- Убираем уведомление для экономии места
+                        MainEvent:FireServer("Reload", tool)
+                    elseif isKnocked and rageBotSettings.voidOnNotAvailable and not (_G.autoBuyInProgress or false) then
+                        -- VoidOnNotAvailable - телепортируемся в пустоту при нокауте
+                        humanoidRootPart.CFrame = humanoidRootPart.CFrame + vec3(
+                            random(-80000, 80000), 
+                            random(0, 80000), 
+                            random(-80000, 80000)
+                        )
+                        -- Убираем уведомление для экономии места
+                        MainEvent:FireServer("Reload", tool)
+                    end
+                end
+            end
         end)
     end
     
@@ -793,6 +929,75 @@ do
     _G.updateRagePlayerList = updatePlayerList
 end
 
+-- // VoidAutoReload Module
+do
+    local voidAutoReloadConnection = nil
+    
+    local function startVoidAutoReload()
+        if voidAutoReloadConnection then
+            voidAutoReloadConnection:Disconnect()
+            voidAutoReloadConnection = nil
+        end
+        
+        voidAutoReloadConnection = rs.Heartbeat:Connect(function()
+            if not rageBotSettings or not rageBotSettings.voidAutoReload then return end
+            
+            -- Безопасная проверка персонажа
+            if not lp.Character then return end
+            
+            local tool = lp.Character:FindFirstChildWhichIsA("Tool")
+            if not tool then return end
+            
+            local ammo = tool:FindFirstChild("Ammo")
+            if not ammo or ammo.Value > 0 then return end
+            
+            -- Если патроны закончились - телепортируемся в void и перезаряжаемся
+            local humanoidRootPart = lp.Character:FindFirstChild("HumanoidRootPart")
+            if not humanoidRootPart then return end
+            
+            -- Сохраняем оригинальную позицию
+            local originalCFrame = humanoidRootPart.CFrame
+            
+            -- Телепортируемся в void
+            humanoidRootPart.CFrame = cfr(
+                random(-80000, 80000), 
+                random(50000, 80000), 
+                random(-80000, 80000)
+            )
+            
+            -- Перезаряжаемся сразу
+            MainEvent:FireServer("Reload", tool)
+            
+            -- Ждем немного для завершения перезарядки
+            task.wait(0.2)
+            
+            -- Возвращаемся на оригинальную позицию если персонаж жив
+            if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+                lp.Character.HumanoidRootPart.CFrame = originalCFrame
+            end
+        end)
+    end
+    
+    local function stopVoidAutoReload()
+        if voidAutoReloadConnection then
+            voidAutoReloadConnection:Disconnect()
+            voidAutoReloadConnection = nil
+        end
+    end
+    
+    -- Автозапуск при изменении настройки
+    task.spawn(function()
+        while true do
+            if rageBotSettings and rageBotSettings.voidAutoReload then
+                startVoidAutoReload()
+            else
+                stopVoidAutoReload()
+            end
+            task.wait(1)
+        end
+    end)
+end
+
 -- // AntiStomp Module
 do
     local antiStompSettings = {
@@ -809,7 +1014,7 @@ do
         
         antiStompConnection = coroutine.create(function()
             while true do
-                wait(0.1)
+                task.wait(0.1)
                 
                 if antiStompSettings.enabled and lp.Character then
                     local humanoid = lp.Character:FindFirstChild("Humanoid")
@@ -1431,7 +1636,7 @@ do
             screenGui.Name = "ESPScreenGui"
             screenGui.ResetOnSpawn = false
             screenGui.IgnoreGuiInset = true
-            screenGui.Parent = lp:WaitForChild("PlayerGui")
+            screenGui.Parent = lp.PlayerGui
         end
         return screenGui
     end
@@ -3714,7 +3919,31 @@ do
             callback = function(bool)
                 _G.rageBotSettings.voidOnNotAvailable = bool
             end,
-            info = "Перемещает в войд при недоступности цели (смерть/форсфилд)"
+            info = "Телепортирует в пустоту при недоступности цели (смерть/форсфилд/нокаут)"
+        })
+        
+        -- VoidAutoReload Toggle
+        section:toggle({
+            name = "VoidAutoReload",
+            flag = "rage_void_auto_reload",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.rageBotSettings.voidAutoReload = bool
+            end,
+            info = "Автоперезарядка в void при нулевых патронах"
+        })
+        
+        -- AutoShoot Toggle
+        section:toggle({
+            name = "AutoShoot",
+            flag = "rage_autoshoot_enabled",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.rageBotSettings.autoShootEnabled = bool
+            end,
+            info = "Автоматически стреляет по выбранной цели"
         })
         
         -- Indicate Toggle
