@@ -488,6 +488,7 @@ do
         indicateName = false,
         indicateHP = false,
         indicateState = false,
+        indicateSelfState = false,
         -- Csync settings
         csyncEnabled = false,
         csyncMode = "Offensive",
@@ -596,6 +597,28 @@ do
     indicateFrame.Size = dim2(0, 200, 0, 100)
     indicateFrame.Position = dim2(0, 0, 0, 0)
     indicateFrame.Visible = false
+    
+    -- SelfState индикатор (отдельный элемент)
+    local selfStateFrame = instance_new("Frame")
+    selfStateFrame.Name = "SelfStateFrame"
+    selfStateFrame.Parent = screenGui
+    selfStateFrame.BackgroundTransparency = 1
+    selfStateFrame.Size = dim2(0, 200, 0, 20)
+    selfStateFrame.AnchorPoint = vec2(0.5, 0.5)
+    selfStateFrame.Position = dim2(0.5, 0, 0.75, 0) -- Между центром и низом экрана
+    selfStateFrame.Visible = false
+    
+    local selfStateText = instance_new("TextLabel")
+    selfStateText.Parent = selfStateFrame
+    selfStateText.BackgroundTransparency = 1
+    selfStateText.Size = dim2(1, 0, 1, 0)
+    selfStateText.Position = dim2(0, 0, 0, 0)
+    selfStateText.Text = ""
+    selfStateText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    selfStateText.TextScaled = true
+    selfStateText.Font = Enum.Font.Code
+    selfStateText.TextStrokeTransparency = 0
+    selfStateText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     
     local indicateTexts = {
         name = instance_new("TextLabel"),
@@ -724,6 +747,49 @@ do
                 end
             end
             
+            -- SelfState индикатор
+            if rageBotSettings.indicateSelfState and lp.Character then
+                local selfState = "Alive"
+                local selfColor = Color3.fromRGB(0, 255, 0) -- Зеленый для живого
+                
+                -- Проверяем состояние локального игрока
+                local success, result = pcall(function()
+                    local playerInWorkspace = ws.Players:FindFirstChild(lp.Name)
+                    if playerInWorkspace and playerInWorkspace:FindFirstChild("BodyEffects") then
+                        local bodyEffects = playerInWorkspace.BodyEffects
+                        
+                        -- Проверяем K.O статус
+                        local koEffect = bodyEffects:FindFirstChild("K.O")
+                        if koEffect and koEffect:FindFirstChild("Value") and koEffect.Value == true then
+                            selfState = "Knocked"
+                            selfColor = Color3.fromRGB(255, 165, 0) -- Оранжевый для нокаута
+                            return
+                        end
+                        
+                        -- Проверяем смерть
+                        local deadEffect = bodyEffects:FindFirstChild("Dead")
+                        if deadEffect and deadEffect:FindFirstChild("Value") and deadEffect.Value == true then
+                            selfState = "PermaDeath"
+                            selfColor = Color3.fromRGB(255, 0, 0) -- Красный для смерти
+                            return
+                        end
+                        
+                        -- Проверяем спавн защиту (форсфилд)
+                        if lp.Character:FindFirstChild("ForceField") then
+                            selfState = "SpawnProtected"
+                            selfColor = Color3.fromRGB(0, 191, 255) -- Голубой для защиты
+                            return
+                        end
+                    end
+                end)
+                
+                selfStateText.Text = "Self: " .. selfState
+                selfStateText.TextColor3 = selfColor
+                selfStateFrame.Visible = true
+            else
+                selfStateFrame.Visible = false
+            end
+            
             -- Csync Logic
             if rageBotSettings.csyncEnabled and not (_G.autoBuyInProgress or false) then
                 if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
@@ -758,9 +824,14 @@ do
                     end
                     
                     if targetUnavailable then
-                        -- Void mode - перемещаем в невозможные координаты с движением
+                        -- Void mode - перемещаем в невозможные координаты
                         _G.autoBuyInProgress = true -- Блокируем AutoBuy во время voiding
-                        _G.startVoidMovement()
+                        local voidPosition = vec3(
+                            random(-8000000, 8000000),
+                            -math.huge, -- -inf по Y оси
+                            random(-8000000, 8000000)
+                        )
+                        myHRP.CFrame = CFrame.new(voidPosition)
                         
                         -- Определяем причину void'а для уведомления
                         local localTool = lp.Character and lp.Character:FindFirstChildOfClass("Tool")
@@ -780,8 +851,6 @@ do
                         
                         _G.autoBuyInProgress = false
                     elseif targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
-                        -- Останавливаем движение в void если цель снова доступна
-                        _G.stopVoidMovement()
                         -- Обычный Csync режим
                         local targetHead = targetPlayer.Character.Head
                         local targetPosition = targetHead.Position
@@ -854,8 +923,12 @@ do
                 
                 -- Проверяем наличие оружия для VoidOnNotAvailable (приостанавливаем во время AutoBuy)
                 if not tool and rageBotSettings.voidOnNotAvailable and humanoidRootPart and not (_G.autoBuyInProgress or false) then
-                    -- VoidOnNotAvailable - начинаем движение в пустоте если нет оружия
-                    _G.startVoidMovement()
+                    -- VoidOnNotAvailable - телепортируемся в пустоту если нет оружия
+                    humanoidRootPart.CFrame = humanoidRootPart.CFrame + vec3(
+                        random(-800000, 800000), 
+                        random(0, 800000), 
+                        random(-800000, 800000)
+                    )0
                     -- Убираем уведомление для экономии места
                     return
                 end
@@ -883,24 +956,34 @@ do
                     
                     if not isKnocked and not isDead then
                         if not hasForceField or tool.Name == "[Rifle]" then
-                            -- Останавливаем движение в void если можем стрелять
-                            _G.stopVoidMovement()
                             -- Стреляем по цели (без позиционирования - за это отвечает Csync)
                             MainEvent:FireServer("ShootGun", toolHandle, toolHandle.Position, targetHead.Position, targetHead, vec3(0, 1, 0))
                         elseif hasForceField and rageBotSettings.voidOnNotAvailable and not (_G.autoBuyInProgress or false) then
-                            -- VoidOnNotAvailable - начинаем движение в пустоте при форсфилде
-                            _G.startVoidMovement()
+                            -- VoidOnNotAvailable - телепортируемся в пустоту при форсфилде
+                            humanoidRootPart.CFrame = humanoidRootPart.CFrame + vec3(
+                                random(-800000, 800000), 
+                                random(0, 800000), 
+                                random(-800000, 800000)
+                            )
                             -- Убираем уведомление для экономии места
                             MainEvent:FireServer("Reload", tool)
                         end
                     elseif isDead and rageBotSettings.voidOnNotAvailable and not (_G.autoBuyInProgress or false) then
-                        -- VoidOnNotAvailable - начинаем движение в пустоте при окончательной смерти
-                        _G.startVoidMovement()
+                        -- VoidOnNotAvailable - телепортируемся в пустоту при окончательной смерти
+                        humanoidRootPart.CFrame = humanoidRootPart.CFrame + vec3(
+                            random(-800000, 800000), 
+                            random(0, 800000), 
+                            random(-800000, 800000)
+                        )
                         -- Убираем уведомление для экономии места
                         MainEvent:FireServer("Reload", tool)
                     elseif isKnocked and rageBotSettings.voidOnNotAvailable and not (_G.autoBuyInProgress or false) then
-                        -- VoidOnNotAvailable - начинаем движение в пустоте при нокауте
-                        _G.startVoidMovement()
+                        -- VoidOnNotAvailable - телепортируемся в пустоту при нокауте
+                        humanoidRootPart.CFrame = humanoidRootPart.CFrame + vec3(
+                            random(-800000, 800000), 
+                            random(0, 800000), 
+                            random(-800000, 800000)
+                        )
                         -- Убираем уведомление для экономии места
                         MainEvent:FireServer("Reload", tool)
                     end
@@ -916,6 +999,7 @@ do
         end
         
         indicateFrame.Visible = false
+        selfStateFrame.Visible = false
     end
     
     -- Инициализация
@@ -928,55 +1012,6 @@ do
     _G.getRageTarget = getTarget
     _G.getRageSelectedPlayerName = getSelectedPlayerName
     _G.updateRagePlayerList = updatePlayerList
-end
-
--- // VoidMovement Module
-do
-    local voidMovementConnection = nil
-    local isInVoid = false
-    local voidStartTime = 0
-    
-    local function startVoidMovement()
-        if voidMovementConnection then
-            voidMovementConnection:Disconnect()
-            voidMovementConnection = nil
-        end
-        
-        isInVoid = true
-        voidStartTime = tick()
-        
-        voidMovementConnection = rs.Heartbeat:Connect(function()
-            if not isInVoid then return end
-            
-            -- Проверяем каждые 0.1 секунды
-            if tick() - voidStartTime >= 0.1 then
-                voidStartTime = tick()
-                
-                if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
-                    local humanoidRootPart = lp.Character.HumanoidRootPart
-                    
-                    -- Генерируем новую случайную позицию в void
-                    humanoidRootPart.CFrame = cfr(
-                        random(-80000, 80000),
-                        random(50000, 80000),
-                        random(-80000, 80000)
-                    )
-                end
-            end
-        end)
-    end
-    
-    local function stopVoidMovement()
-        if voidMovementConnection then
-            voidMovementConnection:Disconnect()
-            voidMovementConnection = nil
-        end
-        isInVoid = false
-    end
-    
-    -- Экспортируем функции для использования в других модулях
-    _G.startVoidMovement = startVoidMovement
-    _G.stopVoidMovement = stopVoidMovement
 end
 
 -- // VoidAutoReload Module
@@ -1008,8 +1043,12 @@ do
             -- Сохраняем оригинальную позицию
             local originalCFrame = humanoidRootPart.CFrame
             
-            -- Начинаем движение в void
-            _G.startVoidMovement()
+            -- Телепортируемся в void
+            humanoidRootPart.CFrame = cfr(
+                random(-800000, 800000), 
+                random(500000, 800000), 
+                random(-800000, 800000)
+            )
             
             -- Перезаряжаемся сразу
             MainEvent:FireServer("Reload", tool)
@@ -1017,8 +1056,7 @@ do
             -- Ждем немного для завершения перезарядки
             task.wait(0.2)
             
-            -- Останавливаем движение в void и возвращаемся
-            _G.stopVoidMovement()
+            -- Возвращаемся на оригинальную позицию если персонаж жив
             if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
                 lp.Character.HumanoidRootPart.CFrame = originalCFrame
             end
@@ -4081,6 +4119,17 @@ do
                 _G.rageBotSettings.indicateState = bool
             end,
             info = "Показывает состояние цели (Alive/Knocked/PermaDeath/SpawnProtected)"
+        })
+        
+        indicateSettings:toggle({
+            name = "Self State",
+            flag = "rage_indicate_self_state",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.rageBotSettings.indicateSelfState = bool
+            end,
+            info = "Показывает ваше состояние (Alive/Knocked/PermaDeath/SpawnProtected)"
         })
         
     end
