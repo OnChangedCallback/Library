@@ -311,17 +311,17 @@ do
     
     -- Auto buy functions
     local function AutoArmor()
-        if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") and lp.Character:FindFirstChild("BodyEffects") then
-            local Origin = lp.Character.HumanoidRootPart.CFrame
-            local Armor = lp.Character.BodyEffects.Armor
-            
-            if Armor.Value <= autoBuySettings.autoArmor.armorValue then
+        if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+            local Armor = lp.DataFolder.Information.Armor
+            if Armor.Value < autoBuySettings.autoArmor.armorValue and lp.DataFolder.currency.Value >= ARMOR_PRICE then
+                _G.autoBuyInProgress = true -- Блокируем Csync
+                local Origin = lp.Character.HumanoidRootPart.CFrame
+                lp.Character.HumanoidRootPart.CFrame = ARMOR_SHOP.CFrame
                 repeat
-                    task_wait()    
-                    lp.Character.HumanoidRootPart.CFrame = ARMOR_SHOP.Head.CFrame
                     fireclickdetector(ARMOR_SHOP.ClickDetector)
-                until Armor.Value >= 130 or lp.DataFolder.Currency.Value < ARMOR_PRICE
+                until Armor.Value >= 130 or lp.DataFolder.currency.Value < ARMOR_PRICE
                 lp.Character.HumanoidRootPart.CFrame = Origin
+                _G.autoBuyInProgress = false -- Разблокируем Csync
             end
         end
     end
@@ -337,6 +337,8 @@ do
             if currentAmmo > 0 then
                 return
             end
+            
+            _G.autoBuyInProgress = true -- Блокируем Csync
             
             for _, tool in pairs(lp.Character:GetChildren()) do
                 if tool:IsA("Tool") then
@@ -364,6 +366,8 @@ do
                 
                 lp.Character.HumanoidRootPart.CFrame = Origin
             end
+            
+            _G.autoBuyInProgress = false -- Разблокируем Csync
         end
     end
     
@@ -374,6 +378,7 @@ do
                 
                 if not autoBuyUtility:hasWeapon(weaponData.Name) then
                     local s, e = pcall(function()
+                        _G.autoBuyInProgress = true -- Блокируем Csync
                         local Origin = lp.Character.HumanoidRootPart.CFrame
                         local weaponShop = autoBuyUtility:getWeaponShop(weaponData)
                         
@@ -386,6 +391,7 @@ do
                             
                             lp.Character.HumanoidRootPart.CFrame = Origin
                         end
+                        _G.autoBuyInProgress = false -- Разблокируем Csync
                     end)
                     if not s then warn("[AutoBuy] Weapon buy error:", weaponData.Name, e) end
                 end
@@ -447,6 +453,344 @@ do
     _G.WEAPONS = WEAPONS
     
     -- ✅ НЕ ЗАПУСКАЕМ АВТОМАТИЧЕСКИ!
+end
+
+-- // RageBot Target Module
+do
+    local rageBotSettings = {
+        targetPlayer = nil,
+        selectedPlayerName = "None",
+        playerList = {"None"},
+        -- Indicate settings
+        indicateEnabled = false,
+        indicateName = false,
+        indicateHP = false,
+        indicateState = false,
+        -- Csync settings
+        csyncEnabled = false,
+        csyncMode = "Offensive",
+        csyncStrengthX = 15,
+        csyncStrengthY = 15,
+        csyncStrengthZ = 15,
+        -- View Target settings
+        viewTargetEnabled = false,
+        -- Void settings
+        voidOnNotAvailable = false
+    }
+    
+    local updateConnection = nil
+    
+    local function updatePlayerList()
+        local newPlayerList = {"None"}
+        
+        for _, player in pairs(players:GetPlayers()) do
+            if player ~= lp then
+                table.insert(newPlayerList, player.Name)
+            end
+        end
+        
+        rageBotSettings.playerList = newPlayerList
+        
+        -- Проверяем, существует ли выбранный игрок
+        if rageBotSettings.selectedPlayerName ~= "None" then
+            local playerExists = false
+            for _, playerName in pairs(newPlayerList) do
+                if playerName == rageBotSettings.selectedPlayerName then
+                    playerExists = true
+                    break
+                end
+            end
+            
+            -- Если игрок существует, обновляем targetPlayer
+            if playerExists then
+                rageBotSettings.targetPlayer = players:FindFirstChild(rageBotSettings.selectedPlayerName)
+            else
+                -- Игрок не найден, но сохраняем выбор для возможного возвращения
+                rageBotSettings.targetPlayer = nil
+            end
+        else
+            rageBotSettings.targetPlayer = nil
+        end
+        
+        -- Обновляем дропдаун если он существует
+        if _G.rageTargetDropdown then
+            _G.rageTargetDropdown.refresh_options(newPlayerList)
+        end
+    end
+    
+    local function startPlayerListUpdater()
+        if updateConnection then
+            updateConnection:Disconnect()
+        end
+        
+        updateConnection = task.spawn(function()
+            while task.wait(2) do
+                updatePlayerList()
+            end
+        end)
+    end
+    
+    local function stopPlayerListUpdater()
+        if updateConnection then
+            task.cancel(updateConnection)
+            updateConnection = nil
+        end
+    end
+    
+    local function setTarget(playerName)
+        rageBotSettings.selectedPlayerName = playerName
+        
+        if playerName == "None" then
+            rageBotSettings.targetPlayer = nil
+        else
+            rageBotSettings.targetPlayer = players:FindFirstChild(playerName)
+        end
+    end
+    
+    local function getTarget()
+        return rageBotSettings.targetPlayer
+    end
+    
+    local function getSelectedPlayerName()
+        return rageBotSettings.selectedPlayerName
+    end
+    
+    -- Indicate System
+    local screenGui = instance_new("ScreenGui")
+    screenGui.Name = "RageIndicator"
+    screenGui.Parent = game.CoreGui
+    screenGui.ResetOnSpawn = false
+    
+    local indicateFrame = instance_new("Frame")
+    indicateFrame.Name = "IndicateFrame"
+    indicateFrame.Parent = screenGui
+    indicateFrame.BackgroundTransparency = 1
+    indicateFrame.Size = dim2(0, 200, 0, 100)
+    indicateFrame.Position = dim2(0, 0, 0, 0)
+    indicateFrame.Visible = false
+    
+    local indicateTexts = {
+        name = instance_new("TextLabel"),
+        hp = instance_new("TextLabel"),
+        state = instance_new("TextLabel")
+    }
+    
+    -- Настройка текстов
+    for i, text in pairs(indicateTexts) do
+        text.Parent = indicateFrame
+        text.BackgroundTransparency = 1
+        text.Size = dim2(0, 200, 0, 16)
+        text.Position = dim2(0, 0, 0, (i == "name" and 0) or (i == "hp" and 16) or 32)
+        text.Font = enum.Font.Code
+        text.TextSize = 12
+        text.TextColor3 = rgb(255, 255, 255)
+        text.TextStrokeTransparency = 0
+        text.TextStrokeColor3 = rgb(0, 0, 0)
+        text.TextXAlignment = enum.TextXAlignment.Left
+        text.TextYAlignment = enum.TextYAlignment.Top
+        text.Visible = false
+    end
+    
+    local indicateConnection = nil
+    
+    local function startIndicateSystem()
+        if indicateConnection then
+            indicateConnection:Disconnect()
+        end
+        
+        indicateConnection = run.Heartbeat:Connect(function()
+            local target = getTarget()
+            local targetPlayer = target and players:FindFirstChild(target.Name)
+            
+            -- View Target Logic (работает независимо от индикаторов)
+            if rageBotSettings.viewTargetEnabled then
+                if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
+                    -- Переключаем камеру на цель
+                    if camera.CameraSubject ~= targetPlayer.Character.Humanoid then
+                        camera.CameraSubject = targetPlayer.Character.Humanoid
+                    end
+                else
+                    -- Нет цели - возвращаем камеру на локального игрока
+                    if lp.Character and lp.Character:FindFirstChild("Humanoid") then
+                        if camera.CameraSubject ~= lp.Character.Humanoid then
+                            camera.CameraSubject = lp.Character.Humanoid
+                        end
+                    end
+                end
+            end
+            
+            -- Индикаторы
+            if not rageBotSettings.indicateEnabled then
+                indicateFrame.Visible = false
+            else
+                if not target or not target.Parent then
+                    indicateFrame.Visible = false
+                else
+                    local mousePos = uis:GetMouseLocation()
+                    local offsetX = 15
+                    local offsetY = 15
+                    
+                    if not targetPlayer or not targetPlayer.Character then
+                        indicateFrame.Visible = false
+                    else
+            
+            -- Позиционируем фрейм рядом с курсором
+            indicateFrame.Position = dim2(0, mousePos.X + offsetX, 0, mousePos.Y + offsetY)
+            
+            local currentY = 0
+            local hasVisibleElements = false
+            
+            -- Target Name
+            if rageBotSettings.indicateName then
+                indicateTexts.name.Text = targetPlayer.Name
+                indicateTexts.name.Position = dim2(0, 0, 0, currentY)
+                indicateTexts.name.Visible = true
+                currentY = currentY + 16
+                hasVisibleElements = true
+            else
+                indicateTexts.name.Visible = false
+            end
+            
+            -- Target HP
+            if rageBotSettings.indicateHP then
+                local humanoid = targetPlayer.Character:FindFirstChild("Humanoid")
+                local hp = humanoid and math.floor(humanoid.Health) or 0
+                local maxHp = humanoid and math.floor(humanoid.MaxHealth) or 100
+                indicateTexts.hp.Text = hp .. "/" .. maxHp .. " HP"
+                indicateTexts.hp.Position = dim2(0, 0, 0, currentY)
+                indicateTexts.hp.Visible = true
+                currentY = currentY + 16
+                hasVisibleElements = true
+            else
+                indicateTexts.hp.Visible = false
+            end
+            
+            -- Target State (включает все состояния)
+            if rageBotSettings.indicateState then
+                local bodyEffects = targetPlayer.Character and targetPlayer.Character:FindFirstChild("BodyEffects")
+                local hasForceField = targetPlayer.Character and targetPlayer.Character:FindFirstChild("ForceField")
+                
+                -- Проверяем все состояния по приоритету
+                local stateText = "Alive"
+                local stateColor = rgb(100, 255, 100) -- зеленый
+                
+                if bodyEffects and bodyEffects:FindFirstChild("SDeath") and bodyEffects.SDeath.Value then
+                    stateText = "PermaDeath"
+                    stateColor = rgb(255, 0, 0) -- красный
+                elseif hasForceField then
+                    stateText = "SpawnProtected"
+                    stateColor = rgb(0, 100, 255) -- синий
+                elseif bodyEffects and bodyEffects:FindFirstChild("K.O") and bodyEffects.K.O.Value then
+                    stateText = "Knocked"
+                    stateColor = rgb(255, 100, 100) -- светло-красный
+                end
+                
+                indicateTexts.state.Text = stateText
+                indicateTexts.state.TextColor3 = stateColor
+                indicateTexts.state.Position = dim2(0, 0, 0, currentY)
+                indicateTexts.state.Visible = true
+                currentY = currentY + 16
+                hasVisibleElements = true
+            else
+                indicateTexts.state.Visible = false
+            end
+            
+                        -- Показываем фрейм только если есть видимые элементы
+                        indicateFrame.Visible = hasVisibleElements
+                    end
+                end
+            end
+            
+            -- Csync Logic
+            if rageBotSettings.csyncEnabled and not (_G.autoBuyInProgress or false) then
+                if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+                    local myHRP = lp.Character.HumanoidRootPart
+                    
+                    -- Проверяем доступность цели для VoidOnNotAvailable
+                    local targetUnavailable = false
+                    if rageBotSettings.voidOnNotAvailable and targetPlayer and targetPlayer.Character then
+                        local bodyEffects = targetPlayer.Character:FindFirstChild("BodyEffects")
+                        local isDead = bodyEffects and bodyEffects:FindFirstChild("SDeath") and bodyEffects.SDeath.Value
+                        local hasForceField = targetPlayer.Character:FindFirstChild("ForceField")
+                        targetUnavailable = isDead or hasForceField
+                    end
+                    
+                    if targetUnavailable then
+                        -- Void mode - перемещаем в невозможные координаты
+                        _G.autoBuyInProgress = true -- Блокируем AutoBuy во время voiding
+                        local voidPosition = vec3(
+                            random(-80000, 80000),
+                            -math.huge, -- -inf по Y оси
+                            random(-80000, 80000)
+                        )
+                        myHRP.CFrame = CFrame.new(voidPosition)
+                        _G.autoBuyInProgress = false
+                    elseif targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
+                        -- Обычный Csync режим
+                        local targetHead = targetPlayer.Character.Head
+                    
+                    if rageBotSettings.csyncMode == "Offensive" then
+                        -- Offensive mode - случайные смещения
+                        local randomOffset = vec3(
+                            random(-rageBotSettings.csyncStrengthX, rageBotSettings.csyncStrengthX),
+                            random(-rageBotSettings.csyncStrengthY, rageBotSettings.csyncStrengthY), 
+                            random(-rageBotSettings.csyncStrengthZ, rageBotSettings.csyncStrengthZ)
+                        )
+                        
+                        myHRP.CFrame = CFrame.lookAt(
+                            targetHead.Position + randomOffset,
+                            targetHead.Position
+                        )
+                        
+                    elseif rageBotSettings.csyncMode == "Defensive" then
+                        -- Defensive mode - смещаем ось от цели, потом случайные смещения от новой оси
+                        local targetPos = targetHead.Position
+                        
+                        -- Создаем новую ось (центр) смещенную от цели
+                        local newAxis = targetPos + vec3(
+                            rageBotSettings.csyncStrengthX, -- смещение по X
+                            0, -- Y не смещаем для оси
+                            rageBotSettings.csyncStrengthZ  -- смещение по Z
+                        )
+                        
+                        -- Генерируем случайное смещение от новой оси
+                        local randomOffset = vec3(
+                            random(-rageBotSettings.csyncStrengthX, rageBotSettings.csyncStrengthX),
+                            random(-rageBotSettings.csyncStrengthY, rageBotSettings.csyncStrengthY), 
+                            random(-rageBotSettings.csyncStrengthZ, rageBotSettings.csyncStrengthZ)
+                        )
+                        
+                        -- Финальная позиция = новая ось + случайное смещение
+                        local finalPos = newAxis + randomOffset
+                        
+                        -- Устанавливаем позицию, смотря на цель
+                        myHRP.CFrame = CFrame.lookAt(finalPos, targetPos)
+                        end
+                    end
+                end
+            end
+        end)
+    end
+    
+    local function stopIndicateSystem()
+        if indicateConnection then
+            indicateConnection:Disconnect()
+            indicateConnection = nil
+        end
+        
+        indicateFrame.Visible = false
+    end
+    
+    -- Инициализация
+    updatePlayerList()
+    startPlayerListUpdater()
+    startIndicateSystem()
+    
+    _G.rageBotSettings = rageBotSettings
+    _G.setRageTarget = setTarget
+    _G.getRageTarget = getTarget
+    _G.getRageSelectedPlayerName = getSelectedPlayerName
+    _G.updateRagePlayerList = updatePlayerList
 end
 
 -- // AntiStomp Module
@@ -2319,10 +2663,10 @@ local window = library:window({
 
 -- // Combat Tab
 do
-    local CameraBotTab, SilentBotTab, OtherTab = window:tab({
+    local CameraBotTab, SilentBotTab, OtherTab, RageTab = window:tab({
         name = "Combat", 
         icon = "rbxassetid://10734975692",  -- lucide-target
-        tabs = {"CameraBot", "SilentBot", "Other"}
+        tabs = {"CameraBot", "SilentBot", "Other", "RAGE"}
     })
     
     -- CameraBot Section
@@ -3255,6 +3599,172 @@ do
             end,
             info = ">_<"
         })
+    end
+    
+    -- RAGE Section
+    do
+        local RageSection = RageTab:column({})
+        local section = RageSection:section({name = "Target Selection", default = true})
+        
+        -- Target Player Dropdown
+        local targetDropdown = section:dropdown({
+            name = "Target Player",
+            flag = "rage_target_player",
+            items = _G.rageBotSettings.playerList,
+            default = "None",
+            callback = function(selected)
+                _G.setRageTarget(selected)
+            end,
+            info = "Выберите игрока для ragebot цели"
+        })
+        
+        -- Сохраняем ссылку на дропдаун для обновления
+        _G.rageTargetDropdown = targetDropdown
+        
+        -- Csync Toggle
+        local csyncToggle = section:toggle({
+            name = "Csync",
+            flag = "rage_csync_enabled",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.rageBotSettings.csyncEnabled = bool
+            end,
+            info = "Синхронизация персонажа с целью"
+        })
+        
+        -- Csync Settings
+        local csyncSettings = csyncToggle:settings({})
+        
+        csyncSettings:dropdown({
+            name = "Mode",
+            flag = "rage_csync_mode",
+            items = {"Offensive", "Defensive"},
+            default = "Offensive",
+            callback = function(selected)
+                _G.rageBotSettings.csyncMode = selected
+            end,
+            info = "Режим работы Csync"
+        })
+        
+        csyncSettings:slider({
+            name = "Strength X",
+            flag = "rage_csync_x",
+            min = 1,
+            max = 150,
+            default = 15,
+            interval = 1,
+            callback = function(value)
+                _G.rageBotSettings.csyncStrengthX = value
+            end,
+            info = "Offensive: смещение от себя | Defensive: радиус от цели"
+        })
+        
+        csyncSettings:slider({
+            name = "Strength Y", 
+            flag = "rage_csync_y",
+            min = 1,
+            max = 150,
+            default = 15,
+            interval = 1,
+            callback = function(value)
+                _G.rageBotSettings.csyncStrengthY = value
+            end,
+            info = "Offensive: смещение от себя | Defensive: радиус от цели"
+        })
+        
+        csyncSettings:slider({
+            name = "Strength Z",
+            flag = "rage_csync_z", 
+            min = 1,
+            max = 150,
+            default = 15,
+            interval = 1,
+            callback = function(value)
+                _G.rageBotSettings.csyncStrengthZ = value
+            end,
+            info = "Offensive: смещение от себя | Defensive: радиус от цели"
+        })
+        
+        -- View Target Toggle
+        section:toggle({
+            name = "View Target",
+            flag = "rage_view_target_enabled",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.rageBotSettings.viewTargetEnabled = bool
+                
+                -- Если выключили - возвращаем камеру на локального игрока
+                if not bool then
+                    if lp.Character then
+                        camera.CameraSubject = lp.Character:FindFirstChild("Humanoid")
+                    end
+                end
+            end,
+            info = "Переключает камеру на выбранную цель"
+        })
+        
+        -- VoidOnNotAvailable Toggle
+        section:toggle({
+            name = "VoidOnNotAvailable",
+            flag = "rage_void_on_not_available",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.rageBotSettings.voidOnNotAvailable = bool
+            end,
+            info = "Перемещает в войд при недоступности цели (смерть/форсфилд)"
+        })
+        
+        -- Indicate Toggle
+        local indicateToggle = section:toggle({
+            name = "Indicate",
+            flag = "rage_indicate_enabled",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.rageBotSettings.indicateEnabled = bool
+            end,
+            info = "Показывает информацию о цели рядом с курсором"
+        })
+        
+        -- Indicate Settings
+        local indicateSettings = indicateToggle:settings({})
+        
+        indicateSettings:toggle({
+            name = "Target Name",
+            flag = "rage_indicate_name",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.rageBotSettings.indicateName = bool
+            end,
+            info = "Показывает имя цели"
+        })
+        
+        indicateSettings:toggle({
+            name = "Target HP",
+            flag = "rage_indicate_hp",
+            type = "toggle", 
+            default = false,
+            callback = function(bool)
+                _G.rageBotSettings.indicateHP = bool
+            end,
+            info = "Показывает здоровье цели"
+        })
+        
+        indicateSettings:toggle({
+            name = "Target State",
+            flag = "rage_indicate_state",
+            type = "toggle",
+            default = false,
+            callback = function(bool)
+                _G.rageBotSettings.indicateState = bool
+            end,
+            info = "Показывает состояние цели (Alive/Knocked/PermaDeath/SpawnProtected)"
+        })
+        
     end
 end
 
