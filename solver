@@ -1,0 +1,1056 @@
+-- // Variables
+local random, huge, floor, ceil, abs, sqrt, sin, cos, pi = math.random, math.huge, math.floor, math.ceil, math.abs, math.sqrt, math.sin, math.cos, math.pi
+local insert, remove, sort = table.insert, table.remove, table.sort
+local tick, wait = tick, wait
+local Vector3new, CFramenew = Vector3.new, CFrame.new
+local Color3fromRGB = Color3.fromRGB
+local UDim2new = UDim2.new
+local Instancenew = Instance.new
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+local LocalPlayer = Players.LocalPlayer
+
+-- // Utility Functions
+local utility = {}
+
+do
+	function utility:clamp(value, min, max)
+		return value < min and min or (value > max and max or value)
+	end
+	
+	function utility:lerp(a, b, t)
+		return a + (b - a) * t
+	end
+	
+	function utility:distance3D(pos1, pos2)
+		return sqrt((pos1.X - pos2.X)^2 + (pos1.Y - pos2.Y)^2 + (pos1.Z - pos2.Z)^2)
+	end
+	
+	function utility:normalizeVector(vector)
+		local magnitude = sqrt(vector.X^2 + vector.Y^2 + vector.Z^2)
+		if magnitude > 0 then
+			return Vector3new(vector.X / magnitude, vector.Y / magnitude, vector.Z / magnitude)
+		else
+			return Vector3new(0, 0, 0)
+		end
+	end
+	
+	function utility:calculateAngle(from, to)
+		local direction = (to - from).Unit
+		return math.atan2(direction.Z, direction.X)
+	end
+	
+	function utility:sigmoid(x)
+		return 1 / (1 + math.exp(-x))
+	end
+	
+	function utility:relu(x)
+		return x > 0 and x or 0
+	end
+	
+	function utility:tanh(x)
+		local exp2x = math.exp(2 * x)
+		return (exp2x - 1) / (exp2x + 1)
+	end
+	
+	function utility:generateGaussianNoise(mean, stddev)
+		local u1, u2 = random(), random()
+		local z0 = sqrt(-2 * math.log(u1)) * cos(2 * pi * u2)
+		return mean + stddev * z0
+	end
+end
+
+-- // Neural Network Framework
+local framework = {}
+
+do
+	function framework:createNeuron(inputSize)
+		local neuron = {
+			weights = {},
+			bias = random() * 2 - 1,
+			lastOutput = 0,
+			lastInput = {},
+			gradient = 0
+		}
+		
+		for i = 1, inputSize do
+			neuron.weights[i] = random() * 2 - 1
+		end
+		
+		return neuron
+	end
+	
+	function framework:createLayer(neuronCount, inputSize)
+		local layer = {
+			neurons = {},
+			size = neuronCount
+		}
+		
+		for i = 1, neuronCount do
+			layer.neurons[i] = framework:createNeuron(inputSize)
+		end
+		
+		return layer
+	end
+	
+	function framework:createNetwork(topology)
+		local network = {
+			layers = {},
+			topology = topology,
+			learningRate = 0.01,
+			momentum = 0.9,
+			previousWeightChanges = {}
+		}
+		
+		for i = 1, #topology do
+			local inputSize = i == 1 and topology[1] or topology[i - 1]
+			network.layers[i] = framework:createLayer(topology[i], inputSize)
+		end
+		
+		return network
+	end
+	
+	function framework:feedForward(network, inputs)
+		local currentInputs = inputs
+		
+		for layerIndex = 1, #network.layers do
+			local layer = network.layers[layerIndex]
+			local outputs = {}
+			
+			for neuronIndex = 1, layer.size do
+				local neuron = layer.neurons[neuronIndex]
+				local sum = neuron.bias
+				
+				for i = 1, #currentInputs do
+					sum = sum + currentInputs[i] * neuron.weights[i]
+				end
+				
+				neuron.lastInput = currentInputs
+				neuron.lastOutput = utility:tanh(sum)
+				outputs[neuronIndex] = neuron.lastOutput
+			end
+			
+			currentInputs = outputs
+		end
+		
+		return currentInputs
+	end
+	
+	function framework:backpropagate(network, expectedOutputs)
+		local layers = network.layers
+		
+		-- Calculate output layer gradients
+		local outputLayer = layers[#layers]
+		for i = 1, outputLayer.size do
+			local neuron = outputLayer.neurons[i]
+			local error = expectedOutputs[i] - neuron.lastOutput
+			neuron.gradient = error * (1 - neuron.lastOutput^2) -- tanh derivative
+		end
+		
+		-- Calculate hidden layer gradients
+		for layerIndex = #layers - 1, 1, -1 do
+			local layer = layers[layerIndex]
+			local nextLayer = layers[layerIndex + 1]
+			
+			for i = 1, layer.size do
+				local neuron = layer.neurons[i]
+				local error = 0
+				
+				for j = 1, nextLayer.size do
+					error = error + nextLayer.neurons[j].gradient * nextLayer.neurons[j].weights[i]
+				end
+				
+				neuron.gradient = error * (1 - neuron.lastOutput^2)
+			end
+		end
+		
+		-- Update weights and biases
+		for layerIndex = 1, #layers do
+			local layer = layers[layerIndex]
+			
+			for neuronIndex = 1, layer.size do
+				local neuron = layer.neurons[neuronIndex]
+				
+				-- Update weights
+				for weightIndex = 1, #neuron.weights do
+					local weightChange = network.learningRate * neuron.gradient * neuron.lastInput[weightIndex]
+					neuron.weights[weightIndex] = neuron.weights[weightIndex] + weightChange
+				end
+				
+				-- Update bias
+				neuron.bias = neuron.bias + network.learningRate * neuron.gradient
+			end
+		end
+	end
+end
+
+-- // Main Resolver Class
+local LocalPlayerResolver = {}
+LocalPlayerResolver.__index = LocalPlayerResolver
+
+do
+	function LocalPlayerResolver.new()
+		local self = setmetatable({}, LocalPlayerResolver)
+		
+		-- Core properties
+		self.isRunning = false
+		self.dataFolder = "ResolverData"
+		self.dataFile = "neural_network_data.json"
+		self.accuracyThreshold = 1.0 -- studs
+		
+		-- Neural network
+		self.neuralNetwork = framework:createNetwork({15, 32, 24, 16, 3}) -- Input: 15 features, Output: X,Y,Z prediction
+		
+		-- Data collection
+		self.positionHistory = {}
+		self.movementData = {}
+		self.maxHistorySize = 500
+		self.minDataForPrediction = 10
+		
+		-- Learning metrics
+		self.totalPredictions = 0
+		self.correctPredictions = 0
+		self.accuracy = 0
+		self.learningProgress = 0
+		self.trainingEpochs = 0
+		
+		-- Player state tracking
+		self.currentState = "unknown"
+		self.stateHistory = {}
+		self.idleTime = 0
+		self.lastPosition = nil
+		self.lastUpdateTime = 0
+		
+		-- Movement analysis
+		self.velocityHistory = {}
+		self.accelerationHistory = {}
+		self.directionHistory = {}
+		self.patternBuffer = {}
+		
+		-- UI elements
+		self.ui = nil
+		
+		-- Prediction validation
+		self.pendingPredictions = {}
+		self.validationQueue = {}
+		
+		-- Advanced features
+		self.adaptiveLearningRate = 0.01
+		self.momentumFactor = 0.9
+		self.noiseReduction = true
+		
+		return self
+	end
+	
+	function LocalPlayerResolver:initializeDataFolder()
+		if not isfolder(self.dataFolder) then
+			makefolder(self.dataFolder)
+		end
+	end
+	
+	function LocalPlayerResolver:saveNetworkData()
+		local networkData = {
+			topology = self.neuralNetwork.topology,
+			learningRate = self.neuralNetwork.learningRate,
+			momentum = self.neuralNetwork.momentum,
+			layers = {},
+			metrics = {
+				totalPredictions = self.totalPredictions,
+				correctPredictions = self.correctPredictions,
+				accuracy = self.accuracy,
+				trainingEpochs = self.trainingEpochs
+			},
+			timestamp = tick()
+		}
+		
+		-- Save network weights and biases
+		for layerIndex, layer in ipairs(self.neuralNetwork.layers) do
+			networkData.layers[layerIndex] = {
+				neurons = {}
+			}
+			
+			for neuronIndex, neuron in ipairs(layer.neurons) do
+				networkData.layers[layerIndex].neurons[neuronIndex] = {
+					weights = neuron.weights,
+					bias = neuron.bias
+				}
+			end
+		end
+		
+		local jsonData = HttpService:JSONEncode(networkData)
+		writefile(self.dataFolder .. "/" .. self.dataFile, jsonData)
+	end
+	
+	function LocalPlayerResolver:loadNetworkData()
+		local filePath = self.dataFolder .. "/" .. self.dataFile
+		if isfile(filePath) then
+			local jsonData = readfile(filePath)
+			local networkData = HttpService:JSONDecode(jsonData)
+			
+			-- Restore metrics
+			self.totalPredictions = networkData.metrics.totalPredictions or 0
+			self.correctPredictions = networkData.metrics.correctPredictions or 0
+			self.accuracy = networkData.metrics.accuracy or 0
+			self.trainingEpochs = networkData.metrics.trainingEpochs or 0
+			
+			-- Restore network weights and biases
+			if networkData.layers then
+				for layerIndex, layerData in ipairs(networkData.layers) do
+					if self.neuralNetwork.layers[layerIndex] then
+						for neuronIndex, neuronData in ipairs(layerData.neurons) do
+							if self.neuralNetwork.layers[layerIndex].neurons[neuronIndex] then
+								local neuron = self.neuralNetwork.layers[layerIndex].neurons[neuronIndex]
+								neuron.weights = neuronData.weights
+								neuron.bias = neuronData.bias
+							end
+						end
+					end
+				end
+			end
+			
+			return true
+		end
+		return false
+	end
+	
+	function LocalPlayerResolver:analyzePlayerState(currentPos, currentTime)
+		if not self.lastPosition then
+			self.lastPosition = currentPos
+			self.lastUpdateTime = currentTime
+			return "initializing"
+		end
+		
+		local timeDelta = currentTime - self.lastUpdateTime
+		local positionDelta = utility:distance3D(currentPos, self.lastPosition)
+		local velocity = timeDelta > 0 and positionDelta / timeDelta or 0
+		
+		local state = "unknown"
+		
+		-- Determine player state based on movement patterns
+		if velocity < 0.1 then
+			self.idleTime = self.idleTime + timeDelta
+			if self.idleTime > 0.5 then
+				state = "standing"
+			else
+				state = "stopping"
+			end
+		elseif velocity > 50 then
+			state = "teleporting"
+			self.idleTime = 0
+		elseif velocity > 20 then
+			state = "fast_moving"
+			self.idleTime = 0
+		elseif velocity > 5 then
+			state = "moving"
+			self.idleTime = 0
+		else
+			state = "slow_moving"
+			self.idleTime = 0
+		end
+		
+		-- Detect pattern changes
+		if #self.stateHistory > 0 and self.stateHistory[#self.stateHistory].state ~= state then
+			-- State changed, analyze pattern
+			if state == "teleporting" and self.currentState ~= "teleporting" then
+				state = "teleport_start"
+			elseif self.currentState == "teleporting" and state ~= "teleporting" then
+				state = "teleport_end"
+			end
+		end
+		
+		-- Update state history
+		insert(self.stateHistory, {
+			state = state,
+			position = currentPos,
+			time = currentTime,
+			velocity = velocity,
+			idleTime = self.idleTime
+		})
+		
+		-- Limit state history size
+		if #self.stateHistory > 50 then
+			remove(self.stateHistory, 1)
+		end
+		
+		self.currentState = state
+		self.lastPosition = currentPos
+		self.lastUpdateTime = currentTime
+		
+		return state
+	end
+	
+	function LocalPlayerResolver:collectMovementData(position, cframe, time)
+		local movementPoint = {
+			position = position,
+			cframe = cframe,
+			time = time,
+			velocity = Vector3new(0, 0, 0),
+			acceleration = Vector3new(0, 0, 0),
+			direction = Vector3new(0, 0, 0),
+			state = self:analyzePlayerState(position, time)
+		}
+		
+		-- Calculate velocity and acceleration
+		if #self.positionHistory >= 1 then
+			local prevPoint = self.positionHistory[#self.positionHistory]
+			local timeDiff = time - prevPoint.time
+			
+			if timeDiff > 0 then
+				movementPoint.velocity = (position - prevPoint.position) / timeDiff
+				
+				if #self.positionHistory >= 2 then
+					local prevVelocity = prevPoint.velocity
+					movementPoint.acceleration = (movementPoint.velocity - prevVelocity) / timeDiff
+				end
+				
+				-- Calculate direction
+				if movementPoint.velocity.Magnitude > 0 then
+					movementPoint.direction = utility:normalizeVector(movementPoint.velocity)
+				end
+			end
+		end
+		
+		-- Add to history
+		insert(self.positionHistory, movementPoint)
+		insert(self.velocityHistory, movementPoint.velocity)
+		insert(self.accelerationHistory, movementPoint.acceleration)
+		insert(self.directionHistory, movementPoint.direction)
+		
+		-- Limit history sizes
+		if #self.positionHistory > self.maxHistorySize then
+			remove(self.positionHistory, 1)
+		end
+		if #self.velocityHistory > self.maxHistorySize then
+			remove(self.velocityHistory, 1)
+		end
+		if #self.accelerationHistory > self.maxHistorySize then
+			remove(self.accelerationHistory, 1)
+		end
+		if #self.directionHistory > self.maxHistorySize then
+			remove(self.directionHistory, 1)
+		end
+		
+		return movementPoint
+	end
+	
+	function LocalPlayerResolver:extractFeatures()
+		if #self.positionHistory < self.minDataForPrediction then
+			return nil
+		end
+		
+		local features = {}
+		local historySize = #self.positionHistory
+		local currentPoint = self.positionHistory[historySize]
+		
+		-- Velocity features (основные для предсказания)
+		local velocity = currentPoint.velocity
+		features[1] = utility:clamp(velocity.X / 16, -1, 1) -- Нормализуем под скорость ходьбы Roblox
+		features[2] = utility:clamp(velocity.Y / 16, -1, 1)
+		features[3] = utility:clamp(velocity.Z / 16, -1, 1)
+		
+		-- Acceleration features
+		local acceleration = currentPoint.acceleration
+		features[4] = utility:clamp(acceleration.X / 10, -1, 1)
+		features[5] = utility:clamp(acceleration.Y / 10, -1, 1)
+		features[6] = utility:clamp(acceleration.Z / 10, -1, 1)
+		
+		-- Movement consistency (последние 3 кадра)
+		local consistentVel = Vector3new(0, 0, 0)
+		local frames = math.min(3, historySize)
+		for i = historySize - frames + 1, historySize do
+			consistentVel = consistentVel + self.positionHistory[i].velocity
+		end
+		consistentVel = consistentVel / frames
+		
+		features[7] = utility:clamp(consistentVel.X / 16, -1, 1)
+		features[8] = utility:clamp(consistentVel.Y / 16, -1, 1)
+		features[9] = utility:clamp(consistentVel.Z / 16, -1, 1)
+		
+		-- Delta position (изменение за последний кадр)
+		if historySize >= 2 then
+			local prevPos = self.positionHistory[historySize - 1].position
+			local currentPos = currentPoint.position
+			local delta = currentPos - prevPos
+			
+			features[10] = utility:clamp(delta.X / 5, -1, 1)
+			features[11] = utility:clamp(delta.Y / 5, -1, 1)
+			features[12] = utility:clamp(delta.Z / 5, -1, 1)
+		else
+			features[10] = 0
+			features[11] = 0
+			features[12] = 0
+		end
+		
+		-- State encoding
+		local stateValue = 0
+		if self.currentState == "standing" then stateValue = -0.9
+		elseif self.currentState == "moving" then stateValue = 0.3
+		elseif self.currentState == "fast_moving" then stateValue = 0.7
+		elseif self.currentState == "teleporting" then stateValue = 0.9
+		end
+		features[13] = stateValue
+		
+		-- Movement magnitude
+		features[14] = utility:clamp(velocity.Magnitude / 16, 0, 1)
+		
+		-- Time consistency
+		features[15] = utility:clamp(self.idleTime / 2, 0, 1)
+		
+		return features
+	end
+	
+	function LocalPlayerResolver:predictNextPosition()
+		local features = self:extractFeatures()
+		if not features then
+			return nil
+		end
+		
+		local currentPos = self.positionHistory[#self.positionHistory].position
+		
+		-- Get neural network prediction (это будет смещение, а не абсолютная позиция)
+		local networkOutput = framework:feedForward(self.neuralNetwork, features)
+		
+		-- Интерпретируем выход как смещение от текущей позиции
+		local deltaX = networkOutput[1] * 5 -- Максимальное смещение 5 studs за кадр
+		local deltaY = networkOutput[2] * 5
+		local deltaZ = networkOutput[3] * 5
+		
+		-- Простое предсказание на основе текущей скорости (fallback)
+		local velocity = self.positionHistory[#self.positionHistory].velocity
+		local simplePredict = currentPos + velocity * (1/60) -- Предсказание на 1 кадр вперед
+		
+		-- Комбинируем нейросеть с простым предсказанием
+		local neuralPredict = currentPos + Vector3new(deltaX, deltaY, deltaZ)
+		
+		-- Взвешенное среднее (больше веса простому предсказанию пока нейросеть обучается)
+		local neuralWeight = math.min(0.7, self.accuracy / 100) -- Вес от 0 до 0.7 в зависимости от точности
+		local simpleWeight = 1 - neuralWeight
+		
+		local finalPrediction = Vector3new(
+			simplePredict.X * simpleWeight + neuralPredict.X * neuralWeight,
+			simplePredict.Y * simpleWeight + neuralPredict.Y * neuralWeight,
+			simplePredict.Z * simpleWeight + neuralPredict.Z * neuralWeight
+		)
+		
+		-- Ограничиваем максимальное смещение
+		local maxDelta = 10 -- studs
+		local actualDelta = finalPrediction - currentPos
+		if actualDelta.Magnitude > maxDelta then
+			local direction = utility:normalizeVector(actualDelta)
+			finalPrediction = currentPos + direction * maxDelta
+		end
+		
+		return finalPrediction
+	end
+	
+	function LocalPlayerResolver:calculatePredictionPercentage(distance)
+		-- Более гибкая формула: экспоненциальное снижение
+		-- 0 studs = 100%, 0.5 studs = ~60%, 1 stud = ~37%, 2 studs = ~14%, 5 studs = ~1%
+		local percentage = 100 * math.exp(-distance * 1.0) -- Экспоненциальное затухание
+		return math.max(0.1, percentage) -- Минимум 0.1% даже для очень плохих предсказаний
+	end
+	
+	function LocalPlayerResolver:validatePrediction(predictedPos, actualPos)
+		if not predictedPos or not actualPos then
+			return false, huge, 0
+		end
+		
+		local distance = utility:distance3D(predictedPos, actualPos)
+		local predictionPercentage = self:calculatePredictionPercentage(distance)
+		local isAccurate = distance <= self.accuracyThreshold
+		
+		self.totalPredictions = self.totalPredictions + 1
+		if isAccurate then
+			self.correctPredictions = self.correctPredictions + 1
+		end
+		
+		-- Update accuracy percentage
+		self.accuracy = (self.correctPredictions / self.totalPredictions) * 100
+		
+		return isAccurate, distance, predictionPercentage
+	end
+	
+	function LocalPlayerResolver:trainNetwork(predictedPos, actualPos)
+		if not predictedPos or not actualPos or #self.positionHistory < 2 then
+			return
+		end
+		
+		-- Получаем предыдущую позицию для расчета целевого смещения
+		local prevPos = self.positionHistory[#self.positionHistory - 1].position
+		local actualDelta = actualPos - prevPos
+		
+		-- Целевой выход - это нормализованное смещение
+		local targetOutput = {
+			utility:clamp(actualDelta.X / 5, -1, 1), -- Нормализуем смещение
+			utility:clamp(actualDelta.Y / 5, -1, 1),
+			utility:clamp(actualDelta.Z / 5, -1, 1)
+		}
+		
+		-- Perform backpropagation
+		framework:backpropagate(self.neuralNetwork, targetOutput)
+		
+		-- Adaptive learning rate adjustment
+		local predictionError = utility:distance3D(predictedPos, actualPos)
+		if predictionError < 1.0 then
+			-- Очень хорошее предсказание
+			self.adaptiveLearningRate = math.min(0.03, self.adaptiveLearningRate * 1.02)
+		elseif predictionError < 3.0 then
+			-- Хорошее предсказание
+			self.adaptiveLearningRate = math.min(0.02, self.adaptiveLearningRate * 1.001)
+		else
+			-- Плохое предсказание, уменьшаем скорость обучения
+			self.adaptiveLearningRate = math.max(0.005, self.adaptiveLearningRate * 0.95)
+		end
+		
+		self.neuralNetwork.learningRate = self.adaptiveLearningRate
+		self.trainingEpochs = self.trainingEpochs + 1
+	end
+	
+	function LocalPlayerResolver:createUI()
+		if self.ui then
+			return
+		end
+		
+		-- Create ScreenGui
+		local screenGui = Instancenew("ScreenGui")
+		screenGui.Name = "LocalPlayerResolverUI"
+		screenGui.Parent = CoreGui
+		screenGui.ResetOnSpawn = false
+		
+		-- Main frame
+		local mainFrame = Instancenew("Frame")
+		mainFrame.Size = UDim2new(0, 400, 0, 200)
+		mainFrame.Position = UDim2new(0.5, -200, 0.65, 0)
+		mainFrame.BackgroundColor3 = Color3fromRGB(25, 25, 25)
+		mainFrame.BackgroundTransparency = 0.15
+		mainFrame.BorderSizePixel = 0
+		mainFrame.Parent = screenGui
+		
+		-- Corner rounding
+		local corner = Instancenew("UICorner")
+		corner.CornerRadius = UDim.new(0, 12)
+		corner.Parent = mainFrame
+		
+		-- Title
+		local titleLabel = Instancenew("TextLabel")
+		titleLabel.Size = UDim2new(1, 0, 0, 30)
+		titleLabel.Position = UDim2new(0, 0, 0, 5)
+		titleLabel.BackgroundTransparency = 1
+		titleLabel.Text = "🧠 NEURAL POSITION RESOLVER v2.0"
+		titleLabel.TextColor3 = Color3fromRGB(120, 220, 255)
+		titleLabel.TextSize = 18
+		titleLabel.Font = Enum.Font.GothamBold
+		titleLabel.TextStrokeTransparency = 0.8
+		titleLabel.Parent = mainFrame
+		
+		-- Current position label
+		local currentPosLabel = Instancenew("TextLabel")
+		currentPosLabel.Size = UDim2new(1, 0, 0, 25)
+		currentPosLabel.Position = UDim2new(0, 0, 0, 35)
+		currentPosLabel.BackgroundTransparency = 1
+		currentPosLabel.Text = "Текущая позиция: ..."
+		currentPosLabel.TextColor3 = Color3fromRGB(200, 200, 200)
+		currentPosLabel.TextSize = 14
+		currentPosLabel.Font = Enum.Font.Gotham
+		currentPosLabel.Parent = mainFrame
+		
+		-- Predicted position label
+		local predictedPosLabel = Instancenew("TextLabel")
+		predictedPosLabel.Size = UDim2new(1, 0, 0, 25)
+		predictedPosLabel.Position = UDim2new(0, 0, 0, 60)
+		predictedPosLabel.BackgroundTransparency = 1
+		predictedPosLabel.Text = "Предсказанная позиция: ..."
+		predictedPosLabel.TextColor3 = Color3fromRGB(255, 255, 100)
+		predictedPosLabel.TextSize = 14
+		predictedPosLabel.Font = Enum.Font.Gotham
+		predictedPosLabel.Parent = mainFrame
+		
+		-- Accuracy label
+		local accuracyLabel = Instancenew("TextLabel")
+		accuracyLabel.Size = UDim2new(1, 0, 0, 25)
+		accuracyLabel.Position = UDim2new(0, 0, 0, 85)
+		accuracyLabel.BackgroundTransparency = 1
+		accuracyLabel.Text = "Точность: 0.0% (0/0)"
+		accuracyLabel.TextColor3 = Color3fromRGB(100, 255, 100)
+		accuracyLabel.TextSize = 16
+		accuracyLabel.Font = Enum.Font.GothamBold
+		accuracyLabel.Parent = mainFrame
+		
+		-- Status label
+		local statusLabel = Instancenew("TextLabel")
+		statusLabel.Size = UDim2new(1, 0, 0, 25)
+		statusLabel.Position = UDim2new(0, 0, 0, 110)
+		statusLabel.BackgroundTransparency = 1
+		statusLabel.Text = "Состояние: Инициализация..."
+		statusLabel.TextColor3 = Color3fromRGB(200, 200, 200)
+		statusLabel.TextSize = 14
+		statusLabel.Font = Enum.Font.Gotham
+		statusLabel.Parent = mainFrame
+		
+		-- Previous prediction log
+		local logLabel = Instancenew("TextLabel")
+		logLabel.Size = UDim2new(1, 0, 0, 50)
+		logLabel.Position = UDim2new(0, 0, 0, 135)
+		logLabel.BackgroundTransparency = 1
+		logLabel.Text = "Прошлое предсказание:\nОжидание данных..."
+		logLabel.TextColor3 = Color3fromRGB(180, 180, 180)
+		logLabel.TextSize = 12
+		logLabel.Font = Enum.Font.Gotham
+		logLabel.TextYAlignment = Enum.TextYAlignment.Top
+		logLabel.Parent = mainFrame
+		
+		self.ui = {
+			screenGui = screenGui,
+			mainFrame = mainFrame,
+			currentPosLabel = currentPosLabel,
+			predictedPosLabel = predictedPosLabel,
+			accuracyLabel = accuracyLabel,
+			statusLabel = statusLabel,
+			logLabel = logLabel
+		}
+	end
+	
+	function LocalPlayerResolver:updateUI(currentPos, predictedPos, previousLog, lastPredictionPercentage)
+		if not self.ui then
+			return
+		end
+		
+		-- Update current position
+		if currentPos then
+			self.ui.currentPosLabel.Text = string.format("Текущая позиция: %.1f, %.1f, %.1f", 
+				currentPos.X, currentPos.Y, currentPos.Z)
+		end
+		
+		-- Update predicted position
+		if predictedPos then
+			self.ui.predictedPosLabel.Text = string.format("Предсказанная позиция: %.1f, %.1f, %.1f", 
+				predictedPos.X, predictedPos.Y, predictedPos.Z)
+		else
+			self.ui.predictedPosLabel.Text = "Предсказанная позиция: Сбор данных..."
+		end
+		
+		-- Update accuracy with color coding and percentage info
+		local accuracyText = string.format("Точность: %.1f%% (%d/%d)", 
+			self.accuracy, self.correctPredictions, self.totalPredictions)
+		
+		-- Add last prediction percentage if available
+		if lastPredictionPercentage then
+			accuracyText = accuracyText .. string.format(" | Последнее: %.1f%%", lastPredictionPercentage)
+		end
+		
+		self.ui.accuracyLabel.Text = accuracyText
+		
+		if self.accuracy >= 70 then
+			self.ui.accuracyLabel.TextColor3 = Color3fromRGB(100, 255, 100)
+		elseif self.accuracy >= 40 then
+			self.ui.accuracyLabel.TextColor3 = Color3fromRGB(255, 255, 100)
+		else
+			self.ui.accuracyLabel.TextColor3 = Color3fromRGB(255, 100, 100)
+		end
+		
+		-- Update status
+		local statusText = string.format("Состояние: %s | Эпохи: %d", self.currentState, self.trainingEpochs)
+		self.ui.statusLabel.Text = statusText
+		
+		-- Update previous prediction log
+		if previousLog then
+			self.ui.logLabel.Text = previousLog
+		end
+	end
+	
+	function LocalPlayerResolver:start()
+		if self.isRunning then
+			return
+		end
+		
+		self.isRunning = true
+		self:initializeDataFolder()
+		self:createUI()
+		
+		-- Try to load existing network data
+		local loaded = self:loadNetworkData()
+		if loaded then
+			print("🧠 [Resolver] Загружены сохраненные данные нейросети")
+			print(string.format("📊 Метрики: Точность %.1f%%, Эпохи: %d", self.accuracy, self.trainingEpochs))
+		else
+			print("🧠 [Resolver] Создана новая нейросеть")
+		end
+		
+		local lastSaveTime = tick()
+		local lastPrediction = nil
+		local lastActualPos = nil
+		local previousLog = ""
+		local lastPredictionPercentage = nil
+		
+		print("🚀 [Resolver] Запуск обучения на локальном игроке...")
+		
+		-- Main learning loop
+		local connection = RunService.Heartbeat:Connect(function()
+			if not self.isRunning then
+				return
+			end
+			
+			-- Get local player data
+			if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then
+				return
+			end
+			
+			local currentTime = tick()
+			local currentPos = LocalPlayer.Character.PrimaryPart.Position
+			local currentCFrame = LocalPlayer.Character.PrimaryPart.CFrame
+			
+			-- Collect movement data
+			local movementPoint = self:collectMovementData(currentPos, currentCFrame, currentTime)
+			
+			-- Validate previous prediction if exists
+			if lastPrediction and lastActualPos then
+				local isAccurate, distance, predictionPercentage = self:validatePrediction(lastPrediction, currentPos)
+				lastPredictionPercentage = predictionPercentage
+				
+				-- Train network with previous prediction
+				self:trainNetwork(lastPrediction, currentPos)
+				
+				-- Update previous log with percentage
+				previousLog = string.format("Прошлое предсказание:\nПредсказано: %.1f, %.1f, %.1f\nРеально: %.1f, %.1f, %.1f\nОшибка: %.2f studs (%.1f%%) %s", 
+					lastPrediction.X, lastPrediction.Y, lastPrediction.Z,
+					currentPos.X, currentPos.Y, currentPos.Z,
+					distance, predictionPercentage, isAccurate and "✅" or "❌")
+			end
+			
+			-- Make new prediction
+			local prediction = self:predictNextPosition()
+			
+			-- Update UI with percentage info
+			self:updateUI(currentPos, prediction, previousLog, lastPredictionPercentage)
+			
+			-- Store for next validation
+			lastPrediction = prediction
+			lastActualPos = currentPos
+			
+			-- Auto-save network data every 30 seconds
+			if currentTime - lastSaveTime > 30 then
+				self:saveNetworkData()
+				lastSaveTime = currentTime
+				print(string.format("💾 [Resolver] Автосохранение | Точность: %.1f%% | Эпохи: %d", 
+					self.accuracy, self.trainingEpochs))
+			end
+		end)
+		
+		-- Store connection for cleanup
+		self.heartbeatConnection = connection
+	end
+	
+	function LocalPlayerResolver:stop()
+		if not self.isRunning then
+			return
+		end
+		
+		self.isRunning = false
+		
+		-- Disconnect heartbeat
+		if self.heartbeatConnection then
+			self.heartbeatConnection:Disconnect()
+			self.heartbeatConnection = nil
+		end
+		
+		-- Save final network data
+		self:saveNetworkData()
+		
+		-- Cleanup UI
+		if self.ui and self.ui.screenGui then
+			self.ui.screenGui:Destroy()
+			self.ui = nil
+		end
+		
+		print("🛑 [Resolver] Остановлен")
+		print(string.format("📊 Финальные метрики: %.1f%% точность (%d/%d) | %d эпох обучения", 
+			self.accuracy, self.correctPredictions, self.totalPredictions, self.trainingEpochs))
+	end
+	
+	function LocalPlayerResolver:initializeKalmanFilter()
+		self.kalmanFilter = {
+			-- State vector [x, y, z, vx, vy, vz]
+			state = {0, 0, 0, 0, 0, 0},
+			-- Covariance matrix
+			P = {
+				{1, 0, 0, 0, 0, 0},
+				{0, 1, 0, 0, 0, 0},
+				{0, 0, 1, 0, 0, 0},
+				{0, 0, 0, 1, 0, 0},
+				{0, 0, 0, 0, 1, 0},
+				{0, 0, 0, 0, 0, 1}
+			},
+			-- Process noise
+			Q = 0.1,
+			-- Measurement noise
+			R = 0.5,
+			-- Time step
+			dt = 1/60
+		}
+	end
+	
+	function LocalPlayerResolver:applyKalmanFilter(position)
+		if not self.kalmanFilter then
+			self:initializeKalmanFilter()
+		end
+		
+		local kf = self.kalmanFilter
+		local dt = kf.dt
+		
+		-- Prediction step
+		local F = {
+			{1, 0, 0, dt, 0, 0},
+			{0, 1, 0, 0, dt, 0},
+			{0, 0, 1, 0, 0, dt},
+			{0, 0, 0, 1, 0, 0},
+			{0, 0, 0, 0, 1, 0},
+			{0, 0, 0, 0, 0, 1}
+		}
+		
+		-- Predict state
+		local newState = {}
+		for i = 1, 6 do
+			newState[i] = 0
+			for j = 1, 6 do
+				newState[i] = newState[i] + F[i][j] * kf.state[j]
+			end
+		end
+		kf.state = newState
+		
+		-- Update step with measurement
+		local measurement = {position.X, position.Y, position.Z}
+		local H = {
+			{1, 0, 0, 0, 0, 0},
+			{0, 1, 0, 0, 0, 0},
+			{0, 0, 1, 0, 0, 0}
+		}
+		
+		-- Innovation
+		local innovation = {}
+		for i = 1, 3 do
+			innovation[i] = measurement[i] - kf.state[i]
+		end
+		
+		-- Kalman gain (simplified)
+		local K = 0.3
+		
+		-- Update state
+		for i = 1, 3 do
+			kf.state[i] = kf.state[i] + K * innovation[i]
+		end
+		
+		return Vector3new(kf.state[1], kf.state[2], kf.state[3])
+	end
+end
+
+-- // Global Interface Functions
+local resolver = LocalPlayerResolver.new()
+
+getgenv().StartLocalPlayerResolver = function()
+	resolver:start()
+	return true
+end
+
+getgenv().StopLocalPlayerResolver = function()
+	resolver:stop()
+	return true
+end
+
+getgenv().GetResolverStats = function()
+	return {
+		accuracy = resolver.accuracy,
+		correctPredictions = resolver.correctPredictions,
+		totalPredictions = resolver.totalPredictions,
+		trainingEpochs = resolver.trainingEpochs,
+		currentState = resolver.currentState,
+		isRunning = resolver.isRunning
+	}
+end
+
+getgenv().GetResolverPrediction = function()
+	if resolver.isRunning then
+		return resolver:predictNextPosition()
+	end
+	return nil
+end
+
+getgenv().SaveResolverData = function()
+	resolver:saveNetworkData()
+	return true
+end
+
+getgenv().ResetResolverNetwork = function()
+	resolver.neuralNetwork = framework:createNetwork({15, 32, 24, 16, 3})
+	resolver.neuralNetwork.learningRate = 0.015 -- Начальная скорость обучения
+	resolver.totalPredictions = 0
+	resolver.correctPredictions = 0
+	resolver.accuracy = 0
+	resolver.trainingEpochs = 0
+	resolver.adaptiveLearningRate = 0.015
+	resolver.positionHistory = {}
+	resolver.velocityHistory = {}
+	resolver.accelerationHistory = {}
+	resolver.directionHistory = {}
+	print("🔄 [Resolver] Нейросеть сброшена и переинициализирована")
+	return true
+end
+
+getgenv().GetResolverDebugInfo = function()
+	if #resolver.positionHistory > 0 then
+		local current = resolver.positionHistory[#resolver.positionHistory]
+		return {
+			positionHistorySize = #resolver.positionHistory,
+			currentVelocity = current.velocity,
+			currentState = resolver.currentState,
+			learningRate = resolver.adaptiveLearningRate,
+			lastFeatures = resolver:extractFeatures()
+		}
+	end
+	return {error = "No position history"}
+end
+
+getgenv().GetPredictionPercentage = function(distance)
+	return resolver:calculatePredictionPercentage(distance or 0)
+end
+
+-- // Startup Information
+print("🧠 Neural Position Resolver v2.0 загружен!")
+print("📋 Особенности:")
+print("   • Полноценная нейросеть с backpropagation")
+print("   • Анализ состояний движения игрока")
+print("   • Автоматическое сохранение обученных данных")
+print("   • Kalman фильтр для сглаживания")
+print("   • Адаптивная скорость обучения")
+print("   • Детальная статистика и логи")
+print("")
+print("🚀 Использование:")
+print("   StartLocalPlayerResolver() - Запуск обучения")
+print("   StopLocalPlayerResolver() - Остановка")
+print("   GetResolverStats() - Получить статистику")
+print("   GetResolverPrediction() - Получить предсказание")
+print("   SaveResolverData() - Сохранить данные")
+print("   ResetResolverNetwork() - Сбросить нейросеть")
+print("   GetResolverDebugInfo() - Отладочная информация")
+print("")
+print("🔧 Исправления v2.2:")
+print("   • Предсказание смещения вместо абсолютных координат")
+print("   • Правильная нормализация под скорость Roblox (16 studs/s)")
+print("   • Комбинирование нейросети с простым предсказанием")
+print("   • Улучшенная адаптивная скорость обучения")
+print("   • Процентная система оценки: 0 studs = 100%, 1 stud = 0%")
+print("   • Отображение процентов в UI и логах")
+print("")
+print("🎯 Цель: Достижение 70%+ точности предсказания позиций")
+print("💾 Данные сохраняются в папку: ResolverData/")
+print("")
+print("⚡ Автозапуск через 3 секунды...")
+
+-- Auto-start after 3 seconds
+spawn(function()
+	wait(3)
+	print("🚀 [Resolver] Автозапуск...")
+	StartLocalPlayerResolver()
+end)
